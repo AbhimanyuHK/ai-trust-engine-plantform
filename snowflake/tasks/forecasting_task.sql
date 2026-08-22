@@ -1,0 +1,9 @@
+USE DATABASE TRUST_DB;
+
+CREATE OR REPLACE TASK FORECAST.DAILY_FORECAST_TASK
+  WAREHOUSE = TRUST_WH
+  SCHEDULE = 'USING CRON 0 2 * * * UTC'
+  COMMENT = 'Daily demand forecasting trigger';
+
+-- Enable after the forecasting procedure is deployed:
+-- ALTER TASK FORECAST.DAILY_FORECAST_TASK RESUME;
