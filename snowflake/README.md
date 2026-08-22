@@ -1,36 +1,43 @@
 # Snowflake Deployment
 
-This directory contains the Snowflake objects required by the AI TRUST Engine.
-
-## Design goals
-
-- Snowflake is the system of record for structured transactions and contract data.
-- Snowflake stages hold incoming contract documents.
-- SQL handles deterministic ingestion, transformations, validation, and serving tables.
-- Snowpark Python can be used for complex data/document processing and ML workloads.
-- Snowflake Cortex provides embeddings, Cortex Search, and LLM inference.
-- LangGraph remains the external Python orchestration layer when stateful agent workflows are enabled.
-- Streamlit can provide the HITL and analytics UI.
+This directory contains the Snowflake-native objects required by the AI TRUST Engine.
 
 ## Directory layout
 
 ```text
 snowflake/
 ├── README.md
-├── 00_setup.sql
-├── 01_file_formats.sql
-├── 02_stages.sql
-├── 03_raw_tables.sql
-├── 04_core_tables.sql
-├── 05_ai_tables.sql
-├── 06_forecast_tables.sql
-├── 07_governance_tables.sql
-├── 08_metadata_tables.sql
-├── 09_validation_views.sql
-├── 10_cortex_search.sql
-├── 11_tasks.sql
-└── 12_seed_data.sql
+├── database/
+│   ├── databases.sql
+│   └── schemas.sql
+├── stages/
+│   ├── transaction_stage.sql
+│   └── contract_stage.sql
+├── tables/
+│   ├── raw_transactions.sql
+│   ├── transactions.sql
+│   ├── contracts.sql
+│   ├── document_chunks.sql
+│   ├── forecasts.sql
+│   └── ai_metadata.sql
+├── cortex/
+│   ├── search_service.sql
+│   └── cortex_objects.sql
+├── tasks/
+│   ├── forecasting_task.sql
+│   └── contract_processing_task.sql
+└── procedures/
+    └── processing_procedures.sql
 ```
+
+## Responsibilities
+
+- `database/` creates the TRUST database and schemas.
+- `stages/` defines Snowflake stages for transaction files and contracts.
+- `tables/` stores raw transactions, canonical transactions, contracts, document chunks, forecasts and AI metadata.
+- `cortex/` contains Cortex Search and Cortex AI/embedding configuration.
+- `tasks/` contains Snowflake-native schedules.
+- `procedures/` contains reusable SQL processing logic.
 
 ## Data flow
 
@@ -41,7 +48,7 @@ Retail / Wholesale
       RAW
         |
         v
-   CORE.TRANSACTIONS
+ CORE.TRANSACTIONS
         |
    +----+----------------+
    |                     |
@@ -57,9 +64,6 @@ CONTRACT_STAGE
 Document processing / Snowpark
     |
     v
-AI.DOCUMENTS
-    |
-    v
 AI.DOCUMENT_CHUNKS
     |
     v
@@ -72,26 +76,26 @@ LangGraph + Cortex LLM
 Recommendation -> HITL -> Audit
 ```
 
-## Execution order
+## Deployment order
 
-Run scripts in numeric order after replacing environment placeholders such as `${TRUST_DB}` and `${TRUST_WH}` with your own Snowflake objects.
+1. `database/databases.sql`
+2. `database/schemas.sql`
+3. `stages/*.sql`
+4. `tables/*.sql`
+5. `procedures/*.sql`
+6. `cortex/*.sql`
+7. `tasks/*.sql`
 
-For the free-trial POC, use a small warehouse and avoid creating unnecessary compute. Start with one database and one warehouse, then scale only when the workload requires it.
+Replace environment-specific values such as `TRUST_WH` before deployment. Do not commit credentials or secrets.
 
-## Important Cortex note
+## Free-trial POC
 
-`10_cortex_search.sql` contains a **deployment template** for Cortex Search. Cortex features and SQL syntax can evolve; verify the exact syntax and supported embedding/model options in the Snowflake account before production deployment. Model names are intentionally parameterized rather than hard-coded as a permanent guarantee.
+The core POC is Snowflake-first: Snowflake tables/stages, SQL/Snowpark processing, Cortex embeddings/search/LLM and Snowflake Tasks. LangGraph is an external Python orchestration layer and Streamlit can provide the UI. AWS services are optional rather than required for the core POC.
 
-The scripts do not require Pinecone or another external vector database. Document chunks and AI metadata remain in Snowflake.
+## Important notes
 
-## What is configuration vs execution?
-
-The YAML under `config/` defines source/target mappings, validation rules, chunking parameters, AI settings, workflow settings, and environment values. These SQL files create and operate Snowflake objects. YAML itself does not execute SQL, OCR, embeddings, or LLM calls.
-
-## Production separation
-
-```text
-DEV -> QA -> UAT -> PROD
-```
-
-Use separate environment configuration and Snowflake databases/schemas or equivalent controlled namespaces. Never commit credentials, passwords, private keys, or access tokens to this repository.
+- The embedding vector dimension must match the selected Cortex embedding model.
+- Review Cortex Search syntax and supported model names against the target Snowflake account before production deployment.
+- Tasks are created suspended; resume them only after their dependent procedures/objects are deployed.
+- YAML under `config/` defines configuration; these SQL files create and execute Snowflake-native objects.
+- Use separate controlled configuration/namespaces for DEV, QA, UAT and PROD.
