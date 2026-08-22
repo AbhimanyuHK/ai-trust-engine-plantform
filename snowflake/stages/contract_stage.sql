@@ -1,0 +1,5 @@
+USE DATABASE TRUST_DB;
+
+CREATE STAGE IF NOT EXISTS RAW.CONTRACT_STAGE
+  DIRECTORY = (ENABLE = TRUE)
+  COMMENT = 'Landing stage for partner contract documents';
