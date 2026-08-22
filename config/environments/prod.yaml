@@ -1,0 +1,26 @@
+environment: prod
+
+snowflake:
+  database: TRUST_PROD
+  schemas:
+    raw: RAW
+    core: CORE
+    ai: AI
+    forecast: FORECAST
+    governance: GOVERNANCE
+    metadata: METADATA
+
+storage:
+  contract_stage: TRUST_CONTRACT_STAGE_PROD
+
+cortex:
+  embedding_model: ${CORTEX_EMBEDDING_MODEL}
+  llm_model: ${CORTEX_LLM_MODEL}
+  search_service: TRUST_CONTRACT_SEARCH_PROD
+
+observability:
+  langsmith_enabled: true
+  evaluation_enabled: true
+
+safety:
+  human_approval_required: true
