@@ -1,0 +1,26 @@
+environment: uat
+
+snowflake:
+  database: TRUST_UAT
+  schemas:
+    raw: RAW
+    core: CORE
+    ai: AI
+    forecast: FORECAST
+    governance: GOVERNANCE
+    metadata: METADATA
+
+storage:
+  contract_stage: TRUST_CONTRACT_STAGE_UAT
+
+cortex:
+  embedding_model: ${CORTEX_EMBEDDING_MODEL}
+  llm_model: ${CORTEX_LLM_MODEL}
+  search_service: TRUST_CONTRACT_SEARCH_UAT
+
+observability:
+  langsmith_enabled: true
+  evaluation_enabled: true
+
+safety:
+  human_approval_required: true
