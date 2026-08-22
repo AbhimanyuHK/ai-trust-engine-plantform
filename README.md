@@ -1219,3 +1219,152 @@ This separation makes the platform more reliable, explainable, auditable, and ap
 ## 32. Final Architecture in One Sentence
 
 **S3 provides raw document storage, Snowflake provides the governed source of truth, Cortex Search provides hybrid retrieval, Llama provides grounded generation, LangGraph orchestrates the agent workflow, deterministic rules protect financial correctness, HITL provides human governance, and LangSmith / Ragas / Phoenix provide AI observability and evaluation.**
+
+### Project Structure
+
+```
+ai-trust-engine/
+│
+├── README.md
+├── pyproject.toml
+├── requirements.txt
+├── .env.example
+├── .gitignore
+│
+├── config/
+│   ├── environments/
+│   │   ├── dev.yaml
+│   │   ├── qa.yaml
+│   │   ├── uat.yaml
+│   │   └── prod.yaml
+│   │
+│   └── pipelines/
+│       └── trust-engine.yaml
+│
+├── src/
+│   └── trust_engine/
+│
+│       ├── config/
+│       │   ├── loader.py
+│       │   ├── validator.py
+│       │   └── models.py
+│       │
+│       ├── ingestion/
+│       │   ├── retail.py
+│       │   ├── wholesale.py
+│       │   └── contracts.py
+│       │
+│       ├── data/
+│       │   ├── transformations.py
+│       │   ├── validation.py
+│       │   ├── deduplication.py
+│       │   └── feature_engineering.py
+│       │
+│       ├── documents/
+│       │   ├── detector.py
+│       │   ├── extractor.py
+│       │   ├── ocr.py
+│       │   ├── chunker.py
+│       │   └── metadata.py
+│       │
+│       ├── ai/
+│       │   ├── embeddings.py
+│       │   ├── cortex.py
+│       │   ├── search.py
+│       │   ├── prompts.py
+│       │   └── rag.py
+│       │
+│       ├── forecasting/
+│       │   ├── features.py
+│       │   ├── xgboost_model.py
+│       │   ├── lstm_model.py
+│       │   ├── trainer.py
+│       │   └── predictor.py
+│       │
+│       ├── workflows/
+│       │   ├── contract_recommendation.py
+│       │   ├── forecasting.py
+│       │   └── analytics.py
+│       │
+│       ├── governance/
+│       │   ├── hitl.py
+│       │   ├── guardrails.py
+│       │   ├── audit.py
+│       │   └── policy.py
+│       │
+│       ├── observability/
+│       │   ├── logging.py
+│       │   ├── tracing.py
+│       │   └── evaluation.py
+│       │
+│       ├── services/
+│       │   ├── contract_service.py
+│       │   ├── forecast_service.py
+│       │   └── analytics_service.py
+│       │
+│       └── main.py
+│
+├── snowflake/
+│   │
+│   ├── database/
+│   │   ├── databases.sql
+│   │   └── schemas.sql
+│   │
+│   ├── stages/
+│   │   ├── transaction_stage.sql
+│   │   └── contract_stage.sql
+│   │
+│   ├── tables/
+│   │   ├── raw_transactions.sql
+│   │   ├── transactions.sql
+│   │   ├── contracts.sql
+│   │   ├── document_chunks.sql
+│   │   ├── forecasts.sql
+│   │   └── ai_metadata.sql
+│   │
+│   ├── cortex/
+│   │   ├── search_service.sql
+│   │   └── cortex_objects.sql
+│   │
+│   ├── tasks/
+│   │   ├── forecasting_task.sql
+│   │   └── contract_processing_task.sql
+│   │
+│   └── procedures/
+│       └── processing_procedures.sql
+│
+├── tests/
+│   ├── unit/
+│   │   ├── test_chunker.py
+│   │   ├── test_validation.py
+│   │   ├── test_rag.py
+│   │   └── test_forecasting.py
+│   │
+│   ├── integration/
+│   │   ├── test_snowflake.py
+│   │   └── test_cortex.py
+│   │
+│   └── evaluation/
+│       ├── rag_evaluation.py
+│       └── llm_evaluation.py
+│
+├── scripts/
+│   ├── deploy.py
+│   ├── validate_config.py
+│   └── run_pipeline.py
+│
+├── infrastructure/
+│   ├── terraform/
+│   └── github-actions/
+│       ├── ci.yml
+│       ├── deploy-dev.yml
+│       └── deploy-prod.yml
+│
+└── docs/
+    ├── architecture.md
+    ├── data-flow.md
+    ├── ai-architecture.md
+    ├── deployment.md
+    ├── security.md
+    └── workflows.md
+```
