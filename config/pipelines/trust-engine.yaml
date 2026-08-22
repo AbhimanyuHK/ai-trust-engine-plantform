@@ -1,0 +1,320 @@
+# AI TRUST Engine - Pipeline Configuration
+# Declarative configuration only. Execution is handled by SQL,
+# Snowpark/Python, Snowflake Cortex and LangGraph.
+
+project:
+  name: ai-trust-engine
+  version: "1.0"
+  description: >-
+    Enterprise AI platform for retail and wholesale transactions,
+    demand forecasting, contract intelligence, recommendations,
+    natural-language analytics and human-in-the-loop governance.
+
+environment:
+  name: ${TRUST_ENV}
+  snowflake:
+    database: ${TRUST_DATABASE}
+    schemas:
+      raw: RAW
+      core: CORE
+      ai: AI
+      forecast: FORECAST
+      governance: GOVERNANCE
+      metadata: METADATA
+  storage:
+    contract_stage: ${CONTRACT_STAGE}
+
+sources:
+  retail:
+    type: structured
+    database: ${TRUST_DATABASE}
+    schema: RAW
+    table: RETAIL_TRANSACTIONS
+    incremental:
+      enabled: true
+      watermark_column: updated_at
+    keys: [transaction_id]
+
+  wholesale:
+    type: structured
+    database: ${TRUST_DATABASE}
+    schema: RAW
+    table: WHOLESALE_TRANSACTIONS
+    incremental:
+      enabled: true
+      watermark_column: updated_at
+    keys: [transaction_id]
+
+  contracts:
+    type: unstructured
+    stage: ${CONTRACT_STAGE}
+    path: contracts/
+
+ targets:
+  transactions:
+    database: ${TRUST_DATABASE}
+    schema: CORE
+    table: TRANSACTIONS
+    write_mode: merge
+    business_key: [transaction_id]
+
+processing:
+  transactions:
+    transformations:
+      - name: standardize_dates
+        enabled: true
+      - name: normalize_currency
+        enabled: true
+      - name: normalize_transaction_type
+        enabled: true
+      - name: standardize_columns
+        enabled: true
+    transaction_types:
+      - INCOME
+      - RETURN
+      - APPEASEMENT
+      - ADJUSTMENT
+      - CREDIT
+      - DEBIT
+      - CANCELLATION
+
+validation:
+  transactions:
+    null_checks:
+      - transaction_id
+      - transaction_date
+      - partner_id
+      - amount
+    duplicate_checks:
+      - name: transaction_id
+        columns: [transaction_id]
+      - name: transaction_business_key
+        columns:
+          - partner_id
+          - transaction_date
+          - transaction_type
+          - amount
+    data_type_checks:
+      transaction_id: string
+      amount: decimal
+      transaction_date: date
+    range_checks:
+      amount:
+        min: 0
+    on_failure: quarantine
+
+documents:
+  contracts:
+    extraction:
+      enabled: true
+      preserve_pages: true
+      preserve_sections: true
+      preserve_tables: true
+      ocr:
+        enabled: true
+        fallback: true
+    chunking:
+      strategy:
+        - document_aware
+        - recursive
+      chunk_size: 800
+      chunk_overlap: 100
+      metadata:
+        - contract_id
+        - partner_id
+        - section
+        - page_number
+        - effective_date
+        - expiry_date
+
+embedding:
+  provider: snowflake_cortex
+  enabled: true
+  model: ${CORTEX_EMBEDDING_MODEL}
+  input:
+    source_table: DOCUMENT_CHUNKS
+    column: chunk_text
+  output:
+    schema: AI
+    table: DOCUMENT_CHUNKS
+    vector_column: embedding
+
+search:
+  contracts:
+    provider: snowflake_cortex
+    service: ${CORTEX_SEARCH_SERVICE}
+    source_table: DOCUMENT_CHUNKS
+    retrieval:
+      top_k: 5
+    metadata_filters:
+      - contract_id
+      - partner_id
+      - country
+      - section
+    return_metadata:
+      - contract_id
+      - partner_id
+      - section
+      - page_number
+      - document_name
+
+llm:
+  provider: snowflake_cortex
+  model: ${CORTEX_LLM_MODEL}
+  parameters:
+    temperature: 0.1
+    max_tokens: 2000
+  governance:
+    citation_required: true
+
+rag:
+  enabled: true
+  retrieval:
+    source: contracts
+    top_k: 5
+  context:
+    max_chunks: 5
+  metadata_filtering: true
+  grounding:
+    require_source_context: true
+    citation_required: true
+
+forecasting:
+  enabled: true
+  horizon_days: 60
+  frequency: daily
+  models:
+    primary: xgboost
+    secondary: lstm
+  features:
+    lag: [1, 3, 12]
+    rolling: [7, 30]
+  output:
+    schema: FORECAST
+    table: DEMAND_FORECAST
+
+workflows:
+  contract_recommendation:
+    framework: langgraph
+    enabled: true
+    nodes:
+      - identify_context
+      - retrieve_contract
+      - retrieve_transactions
+      - retrieve_forecast
+      - analyze
+      - generate_recommendation
+      - validate
+      - human_approval
+    retry:
+      max_attempts: 2
+
+  forecasting:
+    framework: python
+    enabled: true
+    steps:
+      - load_transactions
+      - feature_engineering
+      - model_prediction
+      - validation
+      - store_forecast
+
+  natural_language_analytics:
+    framework: langgraph
+    enabled: true
+    nodes:
+      - understand_question
+      - generate_sql
+      - validate_sql
+      - execute_sql
+      - generate_visualization
+      - generate_response
+
+governance:
+  human_in_the_loop:
+    enabled: true
+    approval_roles:
+      - finance
+      - partner_relations
+    rules:
+      royalty_change:
+        approval_required: true
+        threshold_percent: 5
+      discount_change:
+        approval_required: true
+        threshold_percent: 10
+      contract_activation:
+        approval_required: true
+
+schedules:
+  forecasting:
+    enabled: true
+    frequency: daily
+    time: "02:00"
+  contract_expiry_check:
+    enabled: true
+    frequency: daily
+    time: "03:00"
+  document_processing:
+    enabled: true
+    trigger: new_document
+
+observability:
+  enabled: true
+  tracing:
+    provider: langsmith
+    enabled: true
+  evaluation:
+    enabled: true
+  logging:
+    level: INFO
+  metrics:
+    - pipeline_duration
+    - records_processed
+    - validation_failures
+    - retrieval_latency
+    - retrieval_quality
+    - llm_latency
+    - workflow_failures
+
+metadata:
+  source_systems:
+    - retail
+    - wholesale
+    - contracts
+  domains:
+    - transactions
+    - forecasting
+    - partner_contracts
+  lineage:
+    enabled: true
+  versioning:
+    pipeline_version: "1.0"
+  audit:
+    enabled: true
+    fields:
+      - run_id
+      - pipeline_version
+      - environment
+      - model
+      - prompt_version
+      - embedding_model
+      - source_document
+      - execution_timestamp
+
+security:
+  secrets:
+    source: environment_variables
+  pii:
+    masking_enabled: true
+  access_control:
+    enabled: true
+
+error_handling:
+  retry:
+    enabled: true
+    max_attempts: 3
+  failed_records: quarantine
+  workflow_failure:
+    log: true
+    alert: true
