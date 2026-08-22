@@ -8,6 +8,10 @@
 
 ---
 
+<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/0b77b406-65ba-423b-b926-9dafe7866e01" />
+
+---
+
 ## 1. Business Objective
 
 The platform combines:
