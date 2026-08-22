@@ -1,1 +1,0 @@
-Structured Snowflake SQL is organized by database, stages, tables, cortex, tasks and procedures. See README.md.
