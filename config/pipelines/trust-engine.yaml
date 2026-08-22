@@ -50,7 +50,7 @@ sources:
     stage: ${CONTRACT_STAGE}
     path: contracts/
 
- targets:
+targets:
   transactions:
     database: ${TRUST_DATABASE}
     schema: CORE
