@@ -96,11 +96,14 @@ S3 original PDF / amendment
         v
 ingest_pdf() -- download S3 object to OS temp directory when needed
         |
-        +--> SHA-256 content hash
-        +--> PDF text extraction (OCR fallback for image-only pages)
+        +--> SHA-256 content hash + immutable document ID
+        +--> register AI.DOCUMENTS (reject ID/hash conflicts)
+        +--> record DOCUMENT_REGISTRATION status
+        +--> PDF_EXTRACTION: RUNNING -> SUCCEEDED / FAILED
         +--> page-aware overlapping chunk generation
-        +--> optional durable extracted/chunk/manifest artifacts in S3
-        +--> idempotent Snowflake chunk persistence
+        +--> CHUNK_PERSISTENCE: RUNNING -> SUCCEEDED / FAILED
+        +--> optional ARTIFACT_PERSISTENCE status + versioned S3 artifacts
+        +--> finalize AI.DOCUMENTS.INGESTION_STATUS
                          |
                          v
                 Cortex Search service
