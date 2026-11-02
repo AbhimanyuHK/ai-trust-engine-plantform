@@ -38,19 +38,19 @@ def _registry_connection(path: str):
     conn.execute("PRAGMA journal_mode=WAL")
     try:
         conn.execute(
-        """CREATE TABLE IF NOT EXISTS workflow_runs (
-            thread_id TEXT PRIMARY KEY,
-            workflow_type TEXT NOT NULL,
-            contract_id TEXT,
-            partner_id TEXT,
-            status TEXT NOT NULL,
-            current_step TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            completed_at TEXT,
-            last_error TEXT
-        )"""
-    )
+            """CREATE TABLE IF NOT EXISTS workflow_runs (
+                thread_id TEXT PRIMARY KEY,
+                workflow_type TEXT NOT NULL,
+                contract_id TEXT,
+                partner_id TEXT,
+                status TEXT NOT NULL,
+                current_step TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT,
+                last_error TEXT
+            )"""
+        )
         conn.execute(
             """CREATE TABLE IF NOT EXISTS workflow_events (
                 event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -303,8 +303,8 @@ def start_contract_workflow(
         path, thread_id, "RUNNING", event_type="WORKFLOW_STARTED",
         details={"question": question}, contract_id=contract_id, partner_id=partner_id,
     )
-    graph = build_contract_graph(checkpointer)
     try:
+        graph = build_contract_graph(checkpointer)
         result = graph.invoke(
             {"question": question, "contract_id": contract_id, "partner_id": partner_id},
             config=config,
