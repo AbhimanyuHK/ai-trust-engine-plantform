@@ -221,9 +221,13 @@ def write_artifacts(
     """Persist durable, versioned artifacts; no per-run processing prefix is created."""
     if not partner_id or not contract_id or document_version < 1:
         raise ValueError("partner_id, contract_id and positive document_version are required")
+    content_hash = str(manifest.get("content_hash") or "unknown")
+    parser_version = str(manifest.get("parser_version") or "unknown")
+    chunking_version = str(manifest.get("chunking_version") or "unknown")
     prefix = (
         f"contracts/{partner_id}/{contract_id}/"
-        f"document-versions/v{document_version:04d}"
+        f"document-versions/v{document_version:04d}/"
+        f"derived/{content_hash}/{parser_version}/{chunking_version}"
     )
     artifacts = {
         "extracted": (f"{prefix}/extracted/extracted.json", json.dumps(pages, ensure_ascii=False)),
