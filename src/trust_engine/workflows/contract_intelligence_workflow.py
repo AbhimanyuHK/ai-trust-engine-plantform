@@ -24,6 +24,10 @@ EVENTS_TABLE = "AI.CONTRACT_INTELLIGENCE_WORKFLOW_EVENTS"
 TERMINAL_STATUSES = {"COMPLETED", "FAILED", "CANCELLED"}
 
 
+class CortexSearchRefreshError(RuntimeError):
+    """Raised when the Cortex Search indexing stage fails."""
+
+
 class ContractIntelligenceWorkflowState(TypedDict, total=False):
     run_id: str
     document_id: str
@@ -329,11 +333,14 @@ def build_contract_intelligence_graph(
         }
 
     def refresh_search_index(state: ContractIntelligenceWorkflowState) -> dict[str, Any]:
-        refresh_result = refresh_callable(
-            settings=settings,
-            timeout_seconds=state["search_refresh_timeout_seconds"],
-            poll_interval_seconds=state["search_refresh_poll_interval_seconds"],
-        )
+        try:
+            refresh_result = refresh_callable(
+                settings=settings,
+                timeout_seconds=state["search_refresh_timeout_seconds"],
+                poll_interval_seconds=state["search_refresh_poll_interval_seconds"],
+            )
+        except Exception as exc:
+            raise CortexSearchRefreshError(str(exc)) from exc
         return {
             "search_index_status": "SUCCEEDED",
             "search_refresh": refresh_result,
@@ -404,7 +411,8 @@ def _execute_payload(
             status="FAILED", event_type="DOCUMENT_INGESTION_FAILED",
             current_stage=(
                 "CORTEX_SEARCH_INDEXING"
-                if "result" in locals() and isinstance(result, dict) and "chunk_count" in result
+                if isinstance(exc, CortexSearchRefreshError)
+                or ("result" in locals() and isinstance(result, dict) and "chunk_count" in result)
                 else "DOCUMENT_INGESTION"
             ),
             attempt=workflow_attempt,
@@ -440,10 +448,10 @@ def start_contract_intelligence_workflow(
     ingest_callable: Callable[..., list[DocumentChunk]] = retry_ingest_pdf,
     refresh_callable: Callable[..., dict[str, Any]] = _refresh_and_wait_for_cortex_search,
 ) -> dict[str, Any]:
-    """Start a PDF-to-chunks workflow and track its lifecycle in Snowflake.
+    """Start PDF ingestion, managed embedding/indexing and Snowflake status tracking.
 
-    Cortex Search performs embedding/indexing asynchronously from its configured
-    source table; this workflow does not create a duplicate embedding column.
+    Cortex Search computes managed embeddings from CHUNK_TEXT. The workflow
+    requests a manual refresh and waits for its refresh-history result.
     """
     payload = _build_request_payload(
         source=source, contract_id=contract_id, document_id=document_id,
