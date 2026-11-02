@@ -131,7 +131,7 @@ def test_cortex_search_refresh_uses_configured_service_and_waits_for_success(mon
 
     monkeypatch.setattr(workflow, "connection", lambda _settings: nullcontext(Connection()))
     def fake_query(sql, _params, _settings):
-        if "CURRENT_TIMESTAMP" in sql:
+        if sql.strip().startswith("SELECT CURRENT_TIMESTAMP"):
             return [{"STARTED_AT": "2026-11-02T00:00:00+00:00"}]
         return [{"STATE": "SUCCEEDED", "REFRESH_TRIGGER": "MANUAL"}]
 
