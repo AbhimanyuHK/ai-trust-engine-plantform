@@ -1368,3 +1368,23 @@ ai-trust-engine/
     ├── security.md
     └── workflows.md
 ```
+
+
+---
+
+## Application Implementation
+
+The architecture is now backed by a Python application layer for PDF ingestion, Cortex Search/RAG, XGBoost and optional LSTM forecasting, resumable LangGraph HITL, governed natural-language analytics, a REST API and a Streamlit review UI.
+
+See **[docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)** for setup, Snowflake deployment order, CLI commands, API endpoints and known production-hardening requirements.
+
+Quick start:
+
+```bash
+pip install -e ".[dev,agent,ui]"
+copy .env.example .env
+# Configure Snowflake credentials and role in .env
+uvicorn trust_engine.api:app --host 127.0.0.1 --port 8000
+# Optional UI: streamlit run src/trust_engine/streamlit_app.py
+```
+
