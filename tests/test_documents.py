@@ -161,6 +161,8 @@ def test_retry_ingest_pdf_retries_transient_failure_with_same_ids(monkeypatch):
     assert statuses[0]["stage"] == "INGESTION_RETRY"
     assert statuses[0]["status"] == "RETRYING"
     assert statuses[0]["attempt"] == 1
+    assert statuses[1]["status"] == "SUCCEEDED"
+    assert statuses[1]["attempt"] == 2
     assert sleeps == [0.25]
 
 
@@ -201,3 +203,30 @@ def test_retry_ingest_pdf_validates_retry_configuration():
         except ValueError:
             continue
         raise AssertionError(f"Expected invalid retry configuration to fail: {kwargs}")
+
+
+
+def test_retry_ingest_pdf_marks_exhausted_retry_failed(monkeypatch):
+    import trust_engine.contract_intelligence.ingestion as ingestion
+
+    statuses = []
+    monkeypatch.setattr(
+        ingestion, "ingest_pdf",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("still unavailable")),
+    )
+    monkeypatch.setattr(ingestion, "record_ingestion_status",
+                        lambda **kwargs: statuses.append(kwargs))
+    monkeypatch.setattr(ingestion.time, "sleep", lambda _seconds: None)
+
+    try:
+        ingestion.retry_ingest_pdf(
+            "contract.pdf", contract_id="C-13", document_id="DOC-13",
+            run_id="RUN-13", max_attempts=2, base_delay_seconds=0,
+        )
+    except TimeoutError as exc:
+        assert str(exc) == "still unavailable"
+    else:
+        raise AssertionError("expected retry exhaustion")
+
+    assert [item["status"] for item in statuses] == ["RETRYING", "FAILED"]
+    assert [item["attempt"] for item in statuses] == [1, 2]
