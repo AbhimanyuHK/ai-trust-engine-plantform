@@ -3,7 +3,7 @@
 Deploys DEV, QA, UAT and PROD into four dedicated AWS accounts. The AWS provider uses allowed_account_ids resolved from environment_account_ids; wrong-account credentials are rejected. This is an account guard, not authentication: use IAM Identity Center or an assumed deployment role.
 
 ## Components
-- main.tf: component resources grouped as Network, S3 Storage, SQS Messaging, ECS Compute, WAF Security and CloudWatch Observability.
+- network.tf, storage.tf, messaging.tf, compute.tf, security.tf and observability.tf: component-wise AWS resources.
 - variables.tf, locals.tf, providers.tf, outputs.tf and versions.tf are separate root configuration files.
 - environments/*.tfvars hold per-environment sizing.
 - Snowflake is the only database and persistent workflow store. No DynamoDB, RDS, Aurora, Redis or OpenSearch is provisioned.
