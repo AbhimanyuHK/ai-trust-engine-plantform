@@ -16,8 +16,10 @@ state and append-only workflow events:
 - `workflow_events`: append-only start, pause, approval submission, resume,
   completion and failure events with JSON details.
 
-SQLite uses WAL mode, a busy timeout and full synchronous durability. Keep this
-file on persistent storage and back it up together with its checkpoint data. SQLite
+The workflow registry enables SQLite WAL mode, foreign-key checks and a 30-second
+busy timeout. Keep this file on persistent storage and back it up together with
+its checkpoint data; verify the checkpointer library's transaction and durability
+settings for the pinned dependency version before production deployment. SQLite
 is suitable for local development or a single-worker deployment with a durable
 volume. For multi-instance production, replace it with a shared LangGraph
 checkpointer and a transactional shared workflow registry; do not put SQLite on
