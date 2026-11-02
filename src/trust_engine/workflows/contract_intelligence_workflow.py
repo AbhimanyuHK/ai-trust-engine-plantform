@@ -297,6 +297,7 @@ def build_contract_intelligence_graph(
     ingest_callable: Callable[..., list[DocumentChunk]] = retry_ingest_pdf,
     refresh_callable: Callable[..., dict[str, Any]] = _refresh_and_wait_for_cortex_search,
     settings: Settings | None = None,
+    event_callback: Callable[[str, str, dict[str, Any]], None] | None = None,
 ):
     """Build ingestion -> managed Cortex Search indexing orchestration."""
     graph = StateGraph(ContractIntelligenceWorkflowState)
@@ -326,6 +327,10 @@ def build_contract_intelligence_graph(
                 "PDF processing produced no text chunks; verify the PDF text layer "
                 "or install/configure the OCR extra before marking ingestion complete."
             )
+        if event_callback:
+            event_callback(
+                "CHUNKS_PERSISTED", "CHUNKS_PERSISTED", {"chunk_count": len(chunks)}
+            )
         return {
             "chunk_count": len(chunks),
             "status": "RUNNING",
@@ -333,6 +338,8 @@ def build_contract_intelligence_graph(
         }
 
     def refresh_search_index(state: ContractIntelligenceWorkflowState) -> dict[str, Any]:
+        if event_callback:
+            event_callback("CORTEX_SEARCH_REFRESH_REQUESTED", "CORTEX_SEARCH_INDEXING", {})
         try:
             refresh_result = refresh_callable(
                 settings=settings,
@@ -340,7 +347,17 @@ def build_contract_intelligence_graph(
                 poll_interval_seconds=state["search_refresh_poll_interval_seconds"],
             )
         except Exception as exc:
+            if event_callback:
+                event_callback(
+                    "CORTEX_SEARCH_REFRESH_FAILED", "CORTEX_SEARCH_INDEXING",
+                    {"error_type": type(exc).__name__, "error": str(exc)[:16000]},
+                )
             raise CortexSearchRefreshError(str(exc)) from exc
+        if event_callback:
+            event_callback(
+                "CORTEX_SEARCH_REFRESH_SUCCEEDED", "CORTEX_SEARCH_INDEXED",
+                {"refresh": refresh_result},
+            )
         return {
             "search_index_status": "SUCCEEDED",
             "search_refresh": refresh_result,
@@ -368,9 +385,19 @@ def _execute_payload(
     document_id = payload["document_id"]
     contract_id = payload["contract_id"]
     source = payload["source"]
+    def record_stage_event(
+        event_type: str, stage: str, details: dict[str, Any]
+    ) -> None:
+        _record_workflow(
+            run_id=run_id, document_id=document_id, contract_id=contract_id,
+            source_uri=source, partner_id=payload.get("partner_id"),
+            status="RUNNING", event_type=event_type, current_stage=stage,
+            attempt=workflow_attempt, details=details, settings=settings,
+        )
+
     graph = build_contract_intelligence_graph(
         ingest_callable=ingest_callable, refresh_callable=refresh_callable,
-        settings=settings,
+        settings=settings, event_callback=record_stage_event,
     )
 
     try:
