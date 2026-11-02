@@ -137,6 +137,41 @@ chunks = ingest_pdf(
 )
 ```
 
+For transient failures, use the bounded retry wrapper with a stable
+`document_id` and `run_id`. It retries only the exception classes explicitly
+listed by the caller (the default is `TimeoutError` and `ConnectionError`),
+records `INGESTION_RETRY` as `RETRYING` / `SUCCEEDED` / `FAILED`, and applies
+exponential backoff. Add the Snowflake connector's transient exception classes
+to `retryable_exceptions` only after validating the exception taxonomy for the
+installed connector version.
+
+```python
+from snowflake.connector.errors import OperationalError
+from trust_engine.contract_intelligence import retry_ingest_pdf
+
+chunks = retry_ingest_pdf(
+    "s3://ai-trust-engine-prod/contracts/PARTNER_1001/C1001/"
+    "document-versions/v0002/original/DOC002.pdf",
+    contract_id="C1001",
+    partner_id="PARTNER_1001",
+    document_id="DOC002",
+    run_id="INGEST-RUN-2026-00042",
+    document_version=2,
+    contract_version=2,
+    document_type="AMENDMENT",
+    max_attempts=3,
+    retryable_exceptions=(TimeoutError, ConnectionError, OperationalError),
+    base_delay_seconds=2,
+)
+```
+
+A replay uses the same document/run identifiers and deterministic chunk IDs;
+chunk persistence is implemented with Snowflake `MERGE`, so a retry can safely
+reprocess a stage that completed before a later stage failed. This is at-least-
+once execution with idempotent writes, not a distributed transaction across S3
+and Snowflake. Keep retry limits bounded and do not classify validation,
+authorization, malformed-PDF, or other deterministic errors as transient.
+
 For local PDFs, pass a filesystem path. For S3 URIs, install the optional AWS
 extra and configure the standard AWS SDK credentials/role:
 
@@ -204,6 +239,7 @@ before treating those tables as automatically maintained.
 ## Operational requirements
 
 - Make ingestion idempotent using document IDs, version IDs and SHA-256 hashes.
+- Retry only classified transient failures with a stable run/document ID, bounded attempts and observable retry status.
 - Record parser/chunking versions so artifacts can be regenerated after code changes.
 - Preserve original PDFs and historical versions; do not overwrite chunks on amendment.
 - Keep approval state and workflow status in Snowflake/checkpointer, not S3 folders.
