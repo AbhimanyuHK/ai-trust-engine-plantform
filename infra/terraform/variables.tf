@@ -100,12 +100,20 @@ variable "api_command" {
   default = ["uvicorn", "trust_engine.application.api:app", "--host", "0.0.0.0", "--port", "8000"]
 }
 variable "ingestion_command" {
-  type    = list(string)
-  default = ["python", "-m", "trust_engine.application.cli", "contract-ingestion-worker"]
+  type        = list(string)
+  description = "Required startup command for the SQS ingestion consumer. Implement this entrypoint before deployment."
+  validation {
+    condition     = length(var.ingestion_command) > 0
+    error_message = "Provide the implemented ingestion worker command."
+  }
 }
 variable "recommendation_command" {
-  type    = list(string)
-  default = ["python", "-m", "trust_engine.application.cli", "recommendation-worker"]
+  type        = list(string)
+  description = "Required startup command for the SQS recommendation consumer. Implement this entrypoint before deployment."
+  validation {
+    condition     = length(var.recommendation_command) > 0
+    error_message = "Provide the implemented recommendation worker command."
+  }
 }
 variable "enable_waf" {
   type    = bool
