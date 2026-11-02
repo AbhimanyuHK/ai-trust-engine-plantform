@@ -3,7 +3,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from trust_engine.analytics import ask_analytics
-from trust_engine.cortex import grounded_contract_answer
+from trust_engine.contract_intelligence.cortex import grounded_contract_answer
 from trust_engine.governance import create_approval, decide_approval, get_approval
 from trust_engine.settings import Settings
 from trust_engine.workflows import sqlite_checkpointer, start_contract_workflow, resume_contract_workflow
