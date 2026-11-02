@@ -2,9 +2,8 @@
 
 The Python application layer is under `src/trust_engine`; Snowflake objects are under `snowflake/`. Business capabilities are separated into Contract Intelligence, Forecasting and Workflows.
 
-## Modules
+## Domain packages
 
-- `settings.py` and `db.py`: environment/YAML configuration and Snowflake DB-API access.
 ### Contract Intelligence — `src/trust_engine/contract_intelligence/`
 - `ingestion.py`: PDF extraction/OCR, normalization, page-aware chunking and Snowflake persistence.
 - `cortex.py`: Cortex Search retrieval, AI_COMPLETE and grounded evidence/citations.
@@ -15,6 +14,9 @@ The Python application layer is under `src/trust_engine`; Snowflake objects are 
 
 ### Workflows — `src/trust_engine/workflows/`
 - `contract_recommendation.py`: LangGraph orchestration across contract evidence and structured transaction/forecast context, human interrupt and reviewer resume.
+
+### Shared application components
+- `settings.py` and `db.py`: environment/YAML configuration and Snowflake DB-API access.
 - `governance.py`: deterministic approval thresholds, reviewer-role checks and transactional decision/audit writes.
 - `analytics.py`: Cortex SQL generation, read-only validation and semantic object allowlist.
 - `api.py`: REST endpoints for contract questions, analytics and approvals.
