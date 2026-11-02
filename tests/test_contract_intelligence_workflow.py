@@ -2,6 +2,7 @@ import pytest
 
 pytest.importorskip("langgraph")
 
+import trust_engine.workflows.contract_intelligence_workflow as workflow
 from trust_engine.workflows.contract_intelligence_workflow import (
     _build_request_payload,
     build_contract_intelligence_graph,
@@ -105,3 +106,42 @@ def test_contract_intelligence_request_is_replayable_and_normalized():
     assert payload["document_id"] == "DOC-4"
     assert payload["source"] == "s3://contracts/C-4/v2.pdf"
     assert payload["document_version"] == 2
+
+
+
+def test_cortex_search_refresh_uses_configured_service_and_waits_for_success(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    statements = []
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, sql):
+            statements.append(sql)
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+    monkeypatch.setattr(workflow, "connection", lambda _settings: nullcontext(Connection()))
+    monkeypatch.setattr(
+        workflow,
+        "query",
+        lambda sql, params, _settings: (
+            [{"STATE": "SUCCEEDED", "REFRESH_TRIGGER": "MANUAL"}]
+        ),
+    )
+    settings = SimpleNamespace(cortex_search_service="TRUST_DB.AI.CONTRACT_SEARCH_SERVICE")
+
+    result = workflow._refresh_and_wait_for_cortex_search(
+        settings=settings, timeout_seconds=1, poll_interval_seconds=0.01
+    )
+
+    assert result["STATE"] == "SUCCEEDED"
+    assert "ALTER CORTEX SEARCH SERVICE TRUST_DB.AI.CONTRACT_SEARCH_SERVICE REFRESH" in statements[0]
