@@ -147,10 +147,11 @@ move or overwrite the original PDF.
 
 ## Snowflake schema
 
-Apply `contract_intelligence_schema.sql` before enabling persistence. The
-migration adds document/version lineage and processing provenance columns to
-`AI.DOCUMENT_CHUNKS`. Keep document metadata and structured, approved contract
-terms in separate tables; do not calculate royalties from retrieved chunk text.
+Apply the canonical scripts under `sql/ddl/ai/` before enabling persistence.
+For a new environment, run the create script; for an existing environment,
+review and run the additive upgrade script as appropriate. Keep document
+metadata and structured, approved contract terms in separate tables; do not
+calculate royalties from retrieved chunk text.
 
 Configure Cortex Search to expose the chunk text and useful filter attributes,
 including `CONTRACT_ID`, `PARTNER_ID`, `DOCUMENT_ID`, `DOCUMENT_VERSION`,
@@ -196,11 +197,6 @@ IDs, idempotent MERGE operations, and validation queries. The SQL DML examples
 are templates; the Python ingestion implementation currently persists chunks,
 while document-registry/status writes must be wired into the orchestration layer
 before treating those tables as automatically maintained.
-
-The legacy
-`src/trust_engine/contract_intelligence/contract_intelligence_schema.sql`
-is retained as a pointer to the canonical scripts; do not use it as the deployment
-entrypoint.
 
 ## Operational requirements
 
