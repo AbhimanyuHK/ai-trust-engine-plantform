@@ -26,11 +26,30 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
-def extract_pdf(path: str | Path) -> list[dict[str, object]]:
-    """Extract page-level text. Empty scanned pages must be routed to an OCR worker."""
+def extract_pdf(path: str | Path, ocr_fallback: bool = True) -> list[dict[str, object]]:
+    """Extract page text and optionally OCR scanned pages when OCR extras are installed."""
     reader = PdfReader(str(path))
-    return [{"page_number": i, "text": normalize_text(page.extract_text() or "")}
-            for i, page in enumerate(reader.pages, start=1)]
+    pages: list[dict[str, object]] = []
+    for page_number, page in enumerate(reader.pages, start=1):
+        text = normalize_text(page.extract_text() or "")
+        if not text and ocr_fallback:
+            try:
+                from pdf2image import convert_from_path
+                import pytesseract
+            except ImportError:
+                # Keep an empty page; callers must not mistake it for successful extraction.
+                pass
+            else:
+                try:
+                    image = convert_from_path(str(path), first_page=page_number,
+                                              last_page=page_number, dpi=220)[0]
+                    text = normalize_text(pytesseract.image_to_string(image))
+                except Exception as exc:
+                    raise RuntimeError(
+                        "OCR fallback failed; install Tesseract and Poppler and verify PATH."
+                    ) from exc
+        pages.append({"page_number": page_number, "text": text})
+    return pages
 
 def _section_for(text: str) -> str | None:
     match = re.search(r"(?im)^\s*((?:section\s+)?\d+(?:\.\d+)*\.?\s+.{2,100})$", text)
