@@ -1,20 +1,13 @@
 USE DATABASE TRUST_DB;
-
--- Cortex Search service definition.
--- Review target warehouse, refresh settings and attributes for the
--- Snowflake account before deployment.
-
+-- Cortex Search maintains its managed retrieval index; no external vector database is used.
 CREATE OR REPLACE CORTEX SEARCH SERVICE AI.CONTRACT_SEARCH_SERVICE
   ON CHUNK_TEXT
-  ATTRIBUTES CONTRACT_ID, PARTNER_ID, SECTION, PAGE_NUMBER
+  ATTRIBUTES CONTRACT_ID, PARTNER_ID, COUNTRY, SECTION, PAGE_NUMBER,
+             DOCUMENT_NAME, EFFECTIVE_DATE, EXPIRY_DATE
   WAREHOUSE = TRUST_WH
   TARGET_LAG = '1 hour'
   AS (
-    SELECT
-      CHUNK_TEXT,
-      CONTRACT_ID,
-      PARTNER_ID,
-      SECTION,
-      PAGE_NUMBER
+    SELECT CHUNK_TEXT, CONTRACT_ID, PARTNER_ID, COUNTRY, SECTION, PAGE_NUMBER,
+           DOCUMENT_NAME, EFFECTIVE_DATE, EXPIRY_DATE
     FROM AI.DOCUMENT_CHUNKS
   );
