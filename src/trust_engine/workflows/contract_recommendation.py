@@ -255,9 +255,9 @@ def sqlite_checkpointer(path: str):
     except ImportError as exc:
         raise RuntimeError("Install optional dependencies: pip install -e '.[agent]'") from exc
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    # Initialize the adjacent workflow registry and SQLite durability settings.
-    with _registry_connection(path) as conn:
-        conn.execute("PRAGMA synchronous=FULL")
+    # Initialize the adjacent workflow registry before opening the checkpoint store.
+    with _registry_connection(path):
+        pass
     with SqliteSaver.from_conn_string(path) as saver:
         yield saver
 
