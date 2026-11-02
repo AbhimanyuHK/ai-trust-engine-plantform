@@ -566,6 +566,11 @@ def ingest_pdf(
                 document_version=document_version, contract_version=contract_version,
                 document_type=document_type, source_uri=source_uri, content_hash=content_hash,
             )
+            if not chunks:
+                raise ValueError(
+                    "PDF extraction produced no searchable text chunks; verify the PDF "
+                    "text layer or install/configure the OCR extra for scanned pages."
+                )
             if persist_to_snowflake:
                 record_ingestion_status(
                     run_id=execution_id, document_id=resolved_document_id,
