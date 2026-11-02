@@ -21,7 +21,7 @@ from trust_engine.contract_intelligence.ingestion import DocumentChunk, retry_in
 
 RUNS_TABLE = "AI.CONTRACT_INTELLIGENCE_WORKFLOW_RUNS"
 EVENTS_TABLE = "AI.CONTRACT_INTELLIGENCE_WORKFLOW_EVENTS"
-TERMINAL_STATUSES = {"COMPLETED", "FAILED", "CANCELLED"}
+TERMINAL_STATUSES = {"COMPLETED", "CANCELLED"}
 
 
 class CortexSearchRefreshError(RuntimeError):
