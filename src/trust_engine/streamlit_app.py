@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import streamlit as st
 from trust_engine.analytics import ask_analytics
-from trust_engine.cortex import grounded_contract_answer
+from trust_engine.contract_intelligence.cortex import grounded_contract_answer
 from trust_engine.governance import decide_approval,get_approval
 
 st.set_page_config(page_title="AI TRUST Engine",layout="wide")
