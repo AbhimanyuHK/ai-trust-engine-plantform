@@ -13,24 +13,88 @@ variable "environment_account_ids" {
     error_message = "Provide four valid 12-digit AWS account IDs."
   }
 }
-variable "aws_region" { type = string, default = "ap-south-1" }
-variable "project_name" { type = string, default = "trust-engine" }
-variable "container_image" { type = string, description = "Existing immutable ECR image URI." }
-variable "snowflake_secret_arn" { type = string }
-variable "contract_bucket_name" { type = string }
-variable "acm_certificate_arn" { type = string, default = null }
-variable "vpc_cidr" { type = string, default = "10.40.0.0/16" }
-variable "single_nat_gateway" { type = bool, default = true }
-variable "api_desired_count" { type = number, default = 1 }
-variable "worker_desired_count" { type = number, default = 1 }
-variable "api_min_capacity" { type = number, default = 1 }
-variable "api_max_capacity" { type = number, default = 10 }
-variable "worker_min_capacity" { type = number, default = 1 }
-variable "worker_max_capacity" { type = number, default = 10 }
-variable "api_cpu" { type = number, default = 1024 }
-variable "api_memory" { type = number, default = 2048 }
-variable "worker_cpu" { type = number, default = 2048 }
-variable "worker_memory" { type = number, default = 4096 }
+variable "aws_region" {
+  type    = string
+  default = "ap-south-1"
+}
+variable "project_name" {
+  type    = string
+  default = "trust-engine"
+}
+variable "container_image" {
+  type        = string
+  description = "Existing immutable ECR image URI."
+  validation {
+    condition     = length(trimspace(var.container_image)) > 0 && !strcontains(var.container_image, "REPLACE_ME")
+    error_message = "Set container_image to a pushed image URI."
+  }
+}
+variable "snowflake_secret_arn" {
+  type = string
+  validation {
+    condition     = can(regex("^arn:aws[a-zA-Z-]*:secretsmanager:", var.snowflake_secret_arn))
+    error_message = "snowflake_secret_arn must be a Secrets Manager ARN."
+  }
+}
+variable "contract_bucket_name" {
+  type = string
+}
+variable "acm_certificate_arn" {
+  type    = string
+  default = null
+  validation {
+    condition     = var.environment != "prod" || (var.acm_certificate_arn != null && can(regex("^arn:aws:acm:", var.acm_certificate_arn)))
+    error_message = "PROD requires a valid ACM certificate ARN."
+  }
+}
+variable "vpc_cidr" {
+  type    = string
+  default = "10.40.0.0/16"
+}
+variable "single_nat_gateway" {
+  type    = bool
+  default = true
+}
+variable "api_desired_count" {
+  type    = number
+  default = 1
+}
+variable "worker_desired_count" {
+  type    = number
+  default = 1
+}
+variable "api_min_capacity" {
+  type    = number
+  default = 1
+}
+variable "api_max_capacity" {
+  type    = number
+  default = 10
+}
+variable "worker_min_capacity" {
+  type    = number
+  default = 1
+}
+variable "worker_max_capacity" {
+  type    = number
+  default = 10
+}
+variable "api_cpu" {
+  type    = number
+  default = 1024
+}
+variable "api_memory" {
+  type    = number
+  default = 2048
+}
+variable "worker_cpu" {
+  type    = number
+  default = 2048
+}
+variable "worker_memory" {
+  type    = number
+  default = 4096
+}
 variable "api_command" {
   type    = list(string)
   default = ["uvicorn", "trust_engine.application.api:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -43,6 +107,15 @@ variable "recommendation_command" {
   type    = list(string)
   default = ["python", "-m", "trust_engine.application.cli", "recommendation-worker"]
 }
-variable "enable_waf" { type = bool, default = true }
-variable "log_retention_days" { type = number, default = 30 }
-variable "tags_extra" { type = map(string), default = {} }
+variable "enable_waf" {
+  type    = bool
+  default = true
+}
+variable "log_retention_days" {
+  type    = number
+  default = 30
+}
+variable "tags_extra" {
+  type    = map(string)
+  default = {}
+}
