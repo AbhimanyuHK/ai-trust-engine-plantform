@@ -251,7 +251,7 @@ def write_artifacts(
 
 
 def persist_chunks(chunks: list[DocumentChunk]) -> int:
-    """Idempotently merge chunks; apply contract_intelligence_schema.sql first."""
+    """Idempotently merge chunks; apply sql/ddl/ai/001_create_contract_intelligence_tables.sql first."""
     if not chunks:
         return 0
     values = [
