@@ -307,7 +307,7 @@ def start_contract_workflow(
         graph = build_contract_graph(checkpointer)
         result = graph.invoke(
             {"question": question, "contract_id": contract_id, "partner_id": partner_id},
-            config=config,
+            config={"configurable": {"thread_id": thread_id}},
         )
         status = _status_from_result(result)
         _record_workflow(
