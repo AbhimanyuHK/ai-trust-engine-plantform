@@ -304,3 +304,13 @@ Contract Intelligence DDL. Snowflake standard-table key constraints are
 informational; use stable run IDs, application-level duplicate checks and
 idempotent writes. Do not start the workflow before the DDL is deployed and
 the Snowflake role has the required table privileges.
+
+
+### Workflow deployment additions
+
+The contract-intelligence orchestration requires two additional Snowflake scripts:
+
+- `sql/ddl/ai/003_contract_intelligence_workflow.sql` creates the workflow run and event tables.
+- `sql/ddl/ai/004_create_contract_search_service.sql` creates the managed Cortex Search service over `AI.DOCUMENT_CHUNKS`.
+
+Run both after the base document/chunk DDL. Confirm `TRUST_WH` exists and the deployment role has Cortex Search creation and embedding privileges. Cortex Search manages embeddings and refreshes asynchronously; workflow completion means chunk persistence succeeded, not that every chunk is already searchable.
