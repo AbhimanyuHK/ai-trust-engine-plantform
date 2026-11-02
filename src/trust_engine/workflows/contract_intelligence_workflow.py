@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import date
 from typing import Any, Callable, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -194,7 +195,9 @@ def _build_request_payload(
         raise ValueError("Require chunk_size > overlap >= 0")
     if max_attempts < 1 or base_delay_seconds < 0:
         raise ValueError("max_attempts must be >= 1 and base_delay_seconds >= 0")
-    if effective_date and expiry_date and expiry_date < effective_date:
+    parsed_effective = date.fromisoformat(effective_date) if effective_date else None
+    parsed_expiry = date.fromisoformat(expiry_date) if expiry_date else None
+    if parsed_effective and parsed_expiry and parsed_expiry < parsed_effective:
         raise ValueError("expiry_date cannot be earlier than effective_date")
 
     return {
