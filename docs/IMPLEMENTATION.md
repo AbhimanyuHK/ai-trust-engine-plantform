@@ -9,7 +9,7 @@ The Python application layer is under `src/trust_engine`; Snowflake objects are 
 - `cortex.py`: Cortex Search Python SDK, AI_COMPLETE and grounded evidence assembly.
 - `forecasting.py` and `lstm.py`: daily calendarized revenue features, chronological holdout, XGBoost and optional LSTM inference with forecast persistence.
 - `governance.py`: deterministic approval thresholds, reviewer-role checks and transactional decision/audit writes.
-- `workflows.py`: LangGraph contract workflow with persisted interrupt and reviewer resume.
+- `workflows.py`: LangGraph contract workflow: Cortex Search evidence, partner transaction/forecast context, recommendation generation, persisted human interrupt and reviewer resume.
 - `analytics.py`: Cortex SQL generation, read-only validation and semantic object allowlist.
 - `api.py`: REST endpoints for contract questions, analytics and approvals.
 - `streamlit_app.py`: interactive contract, analytics/chart and approval review screens.
@@ -58,7 +58,7 @@ REST endpoints: `GET /health`, `POST /v1/contracts/ask`, `POST /v1/analytics/ask
 ## Workflow boundaries
 
 - Cortex Search manages its retrieval index; no external vector database is introduced.
-- The base PDF parser extracts text and page references. Scanned PDFs need a configured OCR worker; empty text is not treated as successful extraction.
+- The PDF parser extracts page text and optionally falls back to Tesseract OCR when the `ocr` extra plus system Tesseract/Poppler are installed; otherwise scanned pages remain empty and must be routed for OCR.
 - Forecasting currently predicts revenue (demand remains null until a reliable quantity target is configured). XGBoost is the default; LSTM is an optional sequence-model path. Royalty is calculated only when an authoritative decimal rate is supplied; the LLM never invents a rate.
 - Transaction `AMOUNT` must be normalized to a signed financial value upstream. Forecasting does not guess whether returns, credits or adjustments are positive or negative.
 - Forecast evaluation uses a chronological holdout, not random splitting. Add rolling-origin backtests and model registry promotion before claiming production SLAs.
