@@ -1,4 +1,4 @@
-"""Environment and YAML configuration loading."""
+"""Environment and YAML configuration."""
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -27,8 +27,7 @@ class Settings(BaseSettings):
 
     @property
     def snowflake_config(self) -> dict[str, str]:
-        required = {"account": self.snowflake_account, "user": self.snowflake_user}
-        missing = [key for key, value in required.items() if not value]
+        missing = [key for key, value in {"account": self.snowflake_account, "user": self.snowflake_user}.items() if not value]
         if missing:
             raise ValueError(f"Missing Snowflake settings: {', '.join(missing)}")
         result = {"account": self.snowflake_account, "user": self.snowflake_user,
@@ -49,7 +48,7 @@ def load_pipeline_config(path: str | Path = "config/pipelines/trust-engine.yaml"
             return {key: resolve(item) for key, item in value.items()}
         if isinstance(value, list):
             return [resolve(item) for item in value]
-        if isinstance(value, str) and value.startswith("$" + "{") and value.endswith("}"):
+        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
             return os.getenv(value[2:-1], "")
         return value
     return resolve(raw)

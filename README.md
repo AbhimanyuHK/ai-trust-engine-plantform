@@ -1386,7 +1386,7 @@ Quick start:
 pip install -e ".[dev,agent,ui]"
 copy .env.example .env
 # Configure Snowflake credentials and role in .env
-uvicorn trust_engine.api:app --host 127.0.0.1 --port 8000
-# Optional UI: streamlit run src/trust_engine/streamlit_app.py
+uvicorn trust_engine.application.api:app --host 127.0.0.1 --port 8000
+# Optional UI: streamlit run src/trust_engine/application/streamlit_app.py
 ```
 

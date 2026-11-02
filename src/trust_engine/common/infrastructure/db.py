@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator, Sequence
 import snowflake.connector
 from snowflake.connector import SnowflakeConnection
-from trust_engine.settings import Settings
+from trust_engine.common.config.settings import Settings
 
 @contextmanager
 def connection(settings: Settings | None = None) -> Iterator[SnowflakeConnection]:
@@ -14,14 +14,12 @@ def connection(settings: Settings | None = None) -> Iterator[SnowflakeConnection
     finally:
         conn.close()
 
-def query(sql: str, params: Sequence[Any] | None = None,
-          settings: Settings | None = None) -> list[dict[str, Any]]:
+def query(sql: str, params: Sequence[Any] | None = None, settings: Settings | None = None) -> list[dict[str, Any]]:
     with connection(settings) as conn, conn.cursor(snowflake.connector.DictCursor) as cur:
         cur.execute(sql, params or ())
         return list(cur.fetchall())
 
-def execute(sql: str, params: Sequence[Any] | None = None,
-            settings: Settings | None = None) -> int:
+def execute(sql: str, params: Sequence[Any] | None = None, settings: Settings | None = None) -> int:
     with connection(settings) as conn, conn.cursor() as cur:
         cur.execute(sql, params or ())
         return int(cur.rowcount or 0)

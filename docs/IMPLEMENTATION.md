@@ -4,24 +4,22 @@ The Python application layer is under `src/trust_engine`; Snowflake objects are 
 
 ## Domain packages
 
-### Contract Intelligence — `src/trust_engine/contract_intelligence/`
-- `ingestion.py`: PDF extraction/OCR, normalization, page-aware chunking and Snowflake persistence.
-- `cortex.py`: Cortex Search retrieval, AI_COMPLETE and grounded evidence/citations.
+- `contract_intelligence/`: PDF extraction/OCR, normalization, page-aware chunking, Snowflake persistence, Cortex Search and grounded Q&A.
+- `forecasting/`: daily revenue features, chronological validation, XGBoost and optional TensorFlow LSTM.
+- `workflows/`: LangGraph orchestration, human interrupt and reviewer resume.
 
-### Forecasting — `src/trust_engine/forecasting/`
-- `xgboost_model.py`: daily revenue features, chronological holdout, XGBoost and forecast persistence.
-- `lstm_model.py`: optional TensorFlow sequence forecasting.
+## Application — `application/`
 
-### Workflows — `src/trust_engine/workflows/`
-- `contract_recommendation.py`: LangGraph orchestration across contract evidence and structured transaction/forecast context, human interrupt and reviewer resume.
-
-### Shared application components
-- `settings.py` and `db.py`: environment/YAML configuration and Snowflake DB-API access.
-- `governance.py`: deterministic approval thresholds, reviewer-role checks and transactional decision/audit writes.
-- `analytics.py`: Cortex SQL generation, read-only validation and semantic object allowlist.
-- `api.py`: REST endpoints for contract questions, analytics and approvals.
-- `streamlit_app.py`: interactive contract, analytics/chart and approval review screens.
+- `api.py`: FastAPI endpoints for contract questions, analytics, approvals and workflows.
 - `cli.py`: configuration validation, PDF ingestion, forecasting and approval operations.
+- `streamlit_app.py`: interactive contract, analytics/chart and approval review screens.
+- `services/analytics.py`: Cortex SQL generation, read-only validation and semantic object allowlist.
+- `services/governance.py`: deterministic approval thresholds, reviewer-role checks and transactional decision/audit writes.
+
+## Common — `common/`
+
+- `config/settings.py`: environment/YAML configuration and Snowflake settings.
+- `infrastructure/db.py`: shared Snowflake DB-API connection, query and execute helpers.
 
 ## Setup
 
@@ -30,8 +28,8 @@ python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -e ".[dev,agent,ui]"
-# Optional TensorFlow model: pip install -e ".[lstm]"
-# Optional scanned-PDF OCR dependencies: pip install -e ".[ocr]"
+pip install -e ".[lstm]"  # optional TensorFlow model
+pip install -e ".[ocr]"   # optional scanned-PDF OCR dependencies
 copy .env.example .env
 ```
 
@@ -43,7 +41,7 @@ Set Snowflake account, user, authentication and role values in `.env`. Never com
 2. `snowflake/database/schemas.sql`
 3. `snowflake/stages/*.sql`
 4. `snowflake/tables/*.sql`
-5. `snowflake/migrations/*.sql` (for existing installations)
+5. `snowflake/migrations/*.sql`
 6. `snowflake/procedures/*.sql`
 7. `snowflake/cortex/*.sql`
 8. `snowflake/tasks/*.sql`
@@ -56,21 +54,18 @@ Deploy all table DDL before running the API or CLI against Snowflake.
 trust-engine validate-config
 trust-engine ingest-contract ./contract.pdf --contract-id CONTRACT_101 --partner-id CONTRACTOR_101
 trust-engine forecast --horizon-days 60
-uvicorn trust_engine.api:app --host 127.0.0.1 --port 8000
-# Or launch the interactive UI: streamlit run src/trust_engine/streamlit_app.py
+uvicorn trust_engine.application.api:app --host 127.0.0.1 --port 8000
+streamlit run src/trust_engine/application/streamlit_app.py
 ```
 
-REST endpoints: `GET /health`, `POST /v1/contracts/ask`, `POST /v1/analytics/ask`,
-`POST /v1/approvals`, `GET /v1/approvals/{approval_id}`,
-`POST /v1/approvals/{approval_id}/decision`, `POST /v1/workflows/contracts/{thread_id}/start` and `POST /v1/workflows/contracts/{thread_id}/resume`.
+REST endpoints include `GET /health`, contract Q&A, governed analytics, approval create/read/decision and resumable contract workflow start/resume.
 
-## Workflow boundaries
+## Production boundaries
 
-- Cortex Search manages its retrieval index; no external vector database is introduced.
-- Contract PDFs are owned by Contract Intelligence. Forecasting consumes structured transaction data, while Workflows orchestrates both domains. The PDF parser extracts page text and optionally falls back to Tesseract OCR when the `ocr` extra plus system Tesseract/Poppler are installed; otherwise scanned pages remain empty and must be routed for OCR.
-- Forecasting currently predicts revenue (demand remains null until a reliable quantity target is configured). XGBoost is the default; LSTM is an optional sequence-model path. Royalty is calculated only when an authoritative decimal rate is supplied; the LLM never invents a rate.
-- Transaction `AMOUNT` must be normalized to a signed financial value upstream. Forecasting does not guess whether returns, credits or adjustments are positive or negative.
-- Forecast evaluation uses a chronological holdout, not random splitting. Add rolling-origin backtests and model registry promotion before claiming production SLAs.
-- LangGraph checkpoints represent execution state; Snowflake approval and audit tables represent business decisions. They are separate records. A workflow pauses at the reviewer interrupt and resumes with the same thread ID; it does not keep a model process running while a human is away.
-- SQLite checkpoints are for local development. Multi-instance production requires a shared durable checkpointer, authenticated reviewer identity, SSO/RBAC, API authentication, rate limits and network controls.
-- Verify Cortex model availability, search service syntax, warehouse sizing and grants in the target Snowflake account before deployment.
+- Cortex Search owns retrieval; no external vector database is used.
+- Transaction amounts must be normalized to signed values upstream.
+- Royalty is calculated only with an authoritative decimal rate.
+- SQLite checkpoints are local-development only; production multi-instance use requires a shared durable checkpointer and authenticated reviewer identity.
+- OCR requires the optional Python extra plus system Tesseract and Poppler.
+- Contract activation requires verified signature/acceptance and effective-date controls.
+- Run unit tests and validate Snowflake DDL/API calls in a non-production account before deployment.

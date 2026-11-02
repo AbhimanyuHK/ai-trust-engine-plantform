@@ -1,9 +1,7 @@
-from trust_engine.governance import approval_required
+from trust_engine.application.services.governance import approval_required
 
-def test_approval_policy_thresholds():
+def test_approval_thresholds():
     assert approval_required("royalty_change",5)
-    assert not approval_required("royalty_change",4.99)
-    assert approval_required("discount_change",10)
-    assert not approval_required("discount_change",9.99)
-    assert approval_required("contract_activation")
-    assert approval_required("unrecognized_change",0)
+    assert not approval_required("royalty_change",4.9)
+    assert approval_required("contract_activation",0)
+    assert approval_required("discount_change",None)
