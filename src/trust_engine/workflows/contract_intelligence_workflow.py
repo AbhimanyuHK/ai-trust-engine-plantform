@@ -6,8 +6,10 @@ This module only coordinates it and records workflow lifecycle in Snowflake.
 from __future__ import annotations
 
 import json
+import re
+import time
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Callable, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -69,6 +71,63 @@ def _load_run(run_id: str, settings: Settings | None = None) -> dict[str, Any] |
     row = dict(rows[0])
     row["REQUEST_PAYLOAD"] = _variant(row.get("REQUEST_PAYLOAD"))
     return row
+
+
+def _refresh_and_wait_for_cortex_search(
+    *,
+    settings: Settings | None = None,
+    timeout_seconds: float = 600,
+    poll_interval_seconds: float = 5,
+) -> dict[str, Any]:
+    """Trigger a manual Cortex Search refresh and wait for its refresh-history result."""
+    if timeout_seconds <= 0 or poll_interval_seconds <= 0:
+        raise ValueError("Search refresh timeout and poll interval must be positive")
+    cfg = settings or Settings()
+    parts = cfg.cortex_search_service.split(".")
+    if len(parts) != 3 or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", part) for part in parts):
+        raise ValueError("CORTEX_SEARCH_SERVICE must be a safe DATABASE.SCHEMA.SERVICE identifier")
+    database, schema, service = parts
+    service_fqn = ".".join(parts)
+    started_at = datetime.now(timezone.utc).isoformat()
+
+    with connection(cfg) as conn, conn.cursor() as cur:
+        cur.execute(f"ALTER CORTEX SEARCH SERVICE {service_fqn} REFRESH")
+
+    history_sql = f"""
+        SELECT NAME, DATABASE_NAME, SCHEMA_NAME, STATE, REFRESH_TRIGGER,
+               REFRESH_START_TIME, REFRESH_END_TIME, DATA_TIMESTAMP, ERROR
+        FROM TABLE(INFORMATION_SCHEMA.CORTEX_SEARCH_REFRESH_HISTORY(
+            NAME => '{service}',
+            DATA_TIMESTAMP_START => DATEADD(HOUR, -24, CURRENT_TIMESTAMP()),
+            RESULT_LIMIT => 100
+        ))
+        WHERE DATABASE_NAME = %s
+          AND SCHEMA_NAME = %s
+          AND NAME = %s
+          AND REFRESH_TRIGGER = 'MANUAL'
+          AND REFRESH_START_TIME >= %s::TIMESTAMP_TZ
+        ORDER BY REFRESH_START_TIME DESC
+        LIMIT 1
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        rows = query(history_sql, (database, schema, service, started_at), cfg)
+        if rows:
+            result = dict(rows[0])
+            state = str(result.get("STATE") or "").upper()
+            if state == "SUCCEEDED":
+                return result
+            if state in {"FAILED", "CANCELLED"}:
+                raise RuntimeError(
+                    f"Cortex Search refresh {state.lower()}: "
+                    f"{result.get('ERROR') or 'no Snowflake error detail returned'}"
+                )
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"Timed out waiting {timeout_seconds}s for Cortex Search refresh "
+                f"{database}.{schema}.{service}"
+            )
+        time.sleep(poll_interval_seconds)
 
 
 def _record_workflow(
@@ -182,6 +241,8 @@ def _build_request_payload(
     max_attempts: int = 3,
     base_delay_seconds: float = 1.0,
     artifact_bucket: str | None = None,
+    search_refresh_timeout_seconds: float = 600,
+    search_refresh_poll_interval_seconds: float = 5,
 ) -> dict[str, Any]:
     if not source or not str(source).strip():
         raise ValueError("source is required")
@@ -195,6 +256,8 @@ def _build_request_payload(
         raise ValueError("Require chunk_size > overlap >= 0")
     if max_attempts < 1 or base_delay_seconds < 0:
         raise ValueError("max_attempts must be >= 1 and base_delay_seconds >= 0")
+    if search_refresh_timeout_seconds <= 0 or search_refresh_poll_interval_seconds <= 0:
+        raise ValueError("Search refresh timeout and poll interval must be positive")
     parsed_effective = date.fromisoformat(effective_date) if effective_date else None
     parsed_expiry = date.fromisoformat(expiry_date) if expiry_date else None
     if parsed_effective and parsed_expiry and parsed_expiry < parsed_effective:
@@ -217,14 +280,18 @@ def _build_request_payload(
         "max_attempts": max_attempts,
         "base_delay_seconds": base_delay_seconds,
         "artifact_bucket": artifact_bucket,
+        "search_refresh_timeout_seconds": search_refresh_timeout_seconds,
+        "search_refresh_poll_interval_seconds": search_refresh_poll_interval_seconds,
     }
 
 
 def build_contract_intelligence_graph(
     *,
     ingest_callable: Callable[..., list[DocumentChunk]] = retry_ingest_pdf,
+    refresh_callable: Callable[..., dict[str, Any]] = _refresh_and_wait_for_cortex_search,
+    settings: Settings | None = None,
 ):
-    """Build the orchestration graph; inject ingest_callable for isolated tests."""
+    """Build ingestion -> managed Cortex Search indexing orchestration."""
     graph = StateGraph(ContractIntelligenceWorkflowState)
 
     def ingest_document(state: ContractIntelligenceWorkflowState) -> dict[str, Any]:
@@ -254,13 +321,28 @@ def build_contract_intelligence_graph(
             )
         return {
             "chunk_count": len(chunks),
-            "status": "COMPLETED",
+            "status": "RUNNING",
             "current_stage": "CHUNKS_PERSISTED",
         }
 
+    def refresh_search_index(state: ContractIntelligenceWorkflowState) -> dict[str, Any]:
+        refresh_result = refresh_callable(
+            settings=settings,
+            timeout_seconds=state["search_refresh_timeout_seconds"],
+            poll_interval_seconds=state["search_refresh_poll_interval_seconds"],
+        )
+        return {
+            "search_index_status": "SUCCEEDED",
+            "search_refresh": refresh_result,
+            "status": "COMPLETED",
+            "current_stage": "CORTEX_SEARCH_INDEXED",
+        }
+
     graph.add_node("ingest_document", ingest_document)
+    graph.add_node("refresh_search_index", refresh_search_index)
     graph.add_edge(START, "ingest_document")
-    graph.add_edge("ingest_document", END)
+    graph.add_edge("ingest_document", "refresh_search_index")
+    graph.add_edge("refresh_search_index", END)
     return graph.compile()
 
 
@@ -275,7 +357,9 @@ def _execute_payload(
     document_id = payload["document_id"]
     contract_id = payload["contract_id"]
     source = payload["source"]
-    graph = build_contract_intelligence_graph(ingest_callable=ingest_callable)
+    graph = build_contract_intelligence_graph(
+        ingest_callable=ingest_callable, settings=settings
+    )
 
     try:
         _record_workflow(
@@ -290,11 +374,12 @@ def _execute_payload(
             run_id=run_id, document_id=document_id, contract_id=contract_id,
             source_uri=source, partner_id=payload.get("partner_id"),
             status="COMPLETED", event_type="DOCUMENT_INGESTION_COMPLETED",
-            current_stage="CHUNKS_PERSISTED", attempt=workflow_attempt,
+            current_stage="CORTEX_SEARCH_INDEXED", attempt=workflow_attempt,
             chunk_count=result["chunk_count"],
             details={
                 "chunk_count": result["chunk_count"],
-                "search_indexing": "CORTEX_SEARCH_AUTO_REFRESH",
+                "search_index_status": result["search_index_status"],
+                "search_refresh": result["search_refresh"],
             },
             settings=settings,
         )
@@ -304,14 +389,16 @@ def _execute_payload(
             "contract_id": contract_id,
             "status": "COMPLETED",
             "chunk_count": result["chunk_count"],
-            "search_indexing": "CORTEX_SEARCH_AUTO_REFRESH",
+            "search_index_status": result["search_index_status"],
+            "search_refresh": result["search_refresh"],
         }
     except Exception as exc:
         _record_workflow(
             run_id=run_id, document_id=document_id, contract_id=contract_id,
             source_uri=source, partner_id=payload.get("partner_id"),
             status="FAILED", event_type="DOCUMENT_INGESTION_FAILED",
-            current_stage="DOCUMENT_INGESTION", attempt=workflow_attempt,
+            current_stage="CORTEX_SEARCH_INDEXING" if "chunk_count" in locals() else "DOCUMENT_INGESTION",
+            attempt=workflow_attempt,
             error_message=str(exc)[:16000],
             details={"error_type": type(exc).__name__, "error": str(exc)[:16000]},
             settings=settings,
@@ -338,8 +425,11 @@ def start_contract_intelligence_workflow(
     max_attempts: int = 3,
     base_delay_seconds: float = 1.0,
     artifact_bucket: str | None = None,
+    search_refresh_timeout_seconds: float = 600,
+    search_refresh_poll_interval_seconds: float = 5,
     settings: Settings | None = None,
     ingest_callable: Callable[..., list[DocumentChunk]] = retry_ingest_pdf,
+    refresh_callable: Callable[..., dict[str, Any]] = _refresh_and_wait_for_cortex_search,
 ) -> dict[str, Any]:
     """Start a PDF-to-chunks workflow and track its lifecycle in Snowflake.
 
@@ -354,6 +444,8 @@ def start_contract_intelligence_workflow(
         effective_date=effective_date, expiry_date=expiry_date,
         chunk_size=chunk_size, overlap=overlap, max_attempts=max_attempts,
         base_delay_seconds=base_delay_seconds, artifact_bucket=artifact_bucket,
+        search_refresh_timeout_seconds=search_refresh_timeout_seconds,
+        search_refresh_poll_interval_seconds=search_refresh_poll_interval_seconds,
     )
     execution_id = run_id or str(uuid.uuid4())
     if _load_run(execution_id, settings):
@@ -366,7 +458,7 @@ def start_contract_intelligence_workflow(
     )
     return _execute_payload(
         run_id=execution_id, payload=payload, settings=settings,
-        ingest_callable=ingest_callable,
+        ingest_callable=ingest_callable, refresh_callable=refresh_callable,
     )
 
 
@@ -375,6 +467,7 @@ def resume_contract_intelligence_workflow(
     *,
     settings: Settings | None = None,
     ingest_callable: Callable[..., list[DocumentChunk]] = retry_ingest_pdf,
+    refresh_callable: Callable[..., dict[str, Any]] = _refresh_and_wait_for_cortex_search,
 ) -> dict[str, Any]:
     """Replay an interrupted/failed ingestion with the same stable IDs.
 
@@ -401,6 +494,7 @@ def resume_contract_intelligence_workflow(
     return _execute_payload(
         run_id=run_id, payload=payload, workflow_attempt=int(row.get("ATTEMPT") or 1) + 1,
         settings=settings, ingest_callable=ingest_callable,
+        refresh_callable=refresh_callable,
     )
 
 
