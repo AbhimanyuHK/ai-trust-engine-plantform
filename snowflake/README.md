@@ -82,9 +82,10 @@ Recommendation -> HITL -> Audit
 2. `database/schemas.sql`
 3. `stages/*.sql`
 4. `tables/*.sql`
-5. `procedures/*.sql`
-6. `cortex/*.sql`
-7. `tasks/*.sql`
+5. `migrations/*.sql` (existing deployments only)
+6. `procedures/*.sql`
+7. `cortex/*.sql`
+8. `tasks/*.sql`
 
 Replace environment-specific values such as `TRUST_WH` before deployment. Do not commit credentials or secrets.
 
