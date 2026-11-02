@@ -265,6 +265,7 @@ def _execute_payload(
     *,
     run_id: str,
     payload: dict[str, Any],
+    workflow_attempt: int = 1,
     settings: Settings | None = None,
     ingest_callable: Callable[..., list[DocumentChunk]] = retry_ingest_pdf,
 ) -> dict[str, Any]:
@@ -278,14 +279,16 @@ def _execute_payload(
             run_id=run_id, document_id=document_id, contract_id=contract_id,
             source_uri=source, partner_id=payload.get("partner_id"),
             status="RUNNING", event_type="DOCUMENT_INGESTION_STARTED",
-            current_stage="DOCUMENT_INGESTION", request_payload=payload, settings=settings,
+            current_stage="DOCUMENT_INGESTION", attempt=workflow_attempt,
+            request_payload=payload, settings=settings,
         )
         result = graph.invoke({"run_id": run_id, **payload})
         _record_workflow(
             run_id=run_id, document_id=document_id, contract_id=contract_id,
             source_uri=source, partner_id=payload.get("partner_id"),
             status="COMPLETED", event_type="DOCUMENT_INGESTION_COMPLETED",
-            current_stage="CHUNKS_PERSISTED", chunk_count=result["chunk_count"],
+            current_stage="CHUNKS_PERSISTED", attempt=workflow_attempt,
+            chunk_count=result["chunk_count"],
             details={
                 "chunk_count": result["chunk_count"],
                 "search_indexing": "CORTEX_SEARCH_AUTO_REFRESH",
@@ -305,7 +308,8 @@ def _execute_payload(
             run_id=run_id, document_id=document_id, contract_id=contract_id,
             source_uri=source, partner_id=payload.get("partner_id"),
             status="FAILED", event_type="DOCUMENT_INGESTION_FAILED",
-            current_stage="DOCUMENT_INGESTION", error_message=str(exc)[:16000],
+            current_stage="DOCUMENT_INGESTION", attempt=workflow_attempt,
+            error_message=str(exc)[:16000],
             details={"error_type": type(exc).__name__, "error": str(exc)[:16000]},
             settings=settings,
         )
@@ -391,8 +395,8 @@ def resume_contract_intelligence_workflow(
         current_stage="DOCUMENT_INGESTION", request_payload=payload, settings=settings,
     )
     return _execute_payload(
-        run_id=run_id, payload=payload, settings=settings,
-        ingest_callable=ingest_callable,
+        run_id=run_id, payload=payload, workflow_attempt=int(row.get("ATTEMPT") or 1) + 1,
+        settings=settings, ingest_callable=ingest_callable,
     )
 
 
