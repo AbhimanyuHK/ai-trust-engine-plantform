@@ -25,3 +25,11 @@ Repeat using qa, uat and prod environment files and separate state keys. Create 
 The ECS services use the same container image with separate commands. Confirm the command entrypoints exist before deployment. Snowflake connection/network configuration and the Snowflake-backed LangGraph checkpoint implementation remain application/platform prerequisites. Load-test queue processing, workflow concurrency, Snowflake/Cortex throughput and API RPS before making any one-million-user capacity claim.
 
 Run terraform fmt -recursive, terraform init, terraform validate and terraform plan in each target account. No resources have been deployed by committing these scripts.
+
+## Application readiness blockers (must resolve before production apply)
+
+The current repository API module still opens the SQLite LangGraph checkpointer. That conflicts with the approved Snowflake-only persistence architecture. Replace it with the Snowflake-backed checkpoint implementation before exposing production workflow endpoints. Do not deploy the existing SQLite-backed API as a production service.
+
+The current Typer CLI exposes one-shot commands (such as validate_config, ingest_contract and forecast); it does not yet expose long-running SQS ingestion and recommendation consumer commands. Terraform therefore requires ingestion_command and recommendation_command to be supplied explicitly. Implement and test those worker entrypoints, then pass their actual commands in the environment tfvars or through -var arguments. Do not substitute a sleep process or placeholder command.
+
+This infrastructure is a deployment foundation. It does not claim that the application worker consumers, Snowflake checkpoint implementation, or end-to-end workflow recovery have already been completed.
