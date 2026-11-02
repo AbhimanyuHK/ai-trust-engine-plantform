@@ -69,6 +69,9 @@ processing:
         enabled: true
       - name: standardize_columns
         enabled: true
+    financial_semantics:
+      amount_sign: source_normalized_signed
+      note: Normalize return, credit, debit and adjustment signs in source-specific ingestion rules; never infer sign in the AI layer.
     transaction_types:
       - INCOME
       - RETURN
@@ -98,9 +101,7 @@ validation:
       transaction_id: string
       amount: decimal
       transaction_date: date
-    range_checks:
-      amount:
-        min: 0
+    # Amount is signed after source normalization; do not impose a non-negative range.
     on_failure: quarantine
 
 documents:
@@ -131,13 +132,11 @@ embedding:
   provider: snowflake_cortex
   enabled: true
   model: ${CORTEX_EMBEDDING_MODEL}
+  managed_by: cortex_search
   input:
     source_table: DOCUMENT_CHUNKS
     column: chunk_text
-  output:
-    schema: AI
-    table: DOCUMENT_CHUNKS
-    vector_column: embedding
+  # Cortex Search manages its retrieval index; no manually dimensioned vector column is required.
 
 search:
   contracts:
