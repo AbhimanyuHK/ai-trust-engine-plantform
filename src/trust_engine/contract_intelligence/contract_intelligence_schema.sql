@@ -1,18 +1,11 @@
--- Apply in the target Snowflake database/schema after AI.DOCUMENT_CHUNKS exists.
--- This is an additive migration: historical rows remain queryable; nullable lineage
--- fields allow a staged backfill without rewriting existing chunk identifiers.
-
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS DOCUMENT_ID VARCHAR;
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS DOCUMENT_VERSION NUMBER(10,0) DEFAULT 1;
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS CONTRACT_VERSION NUMBER(10,0) DEFAULT 1;
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS DOCUMENT_TYPE VARCHAR;
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS SOURCE_URI VARCHAR;
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS CONTENT_HASH VARCHAR(64);
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS CLAUSE_NUMBER VARCHAR;
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS PAGE_END NUMBER(10,0);
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS PARSER_VERSION VARCHAR;
-ALTER TABLE AI.DOCUMENT_CHUNKS ADD COLUMN IF NOT EXISTS CHUNKING_VERSION VARCHAR;
-
--- Backfill DOCUMENT_ID / version lineage for existing records as part of a
--- controlled migration using the authoritative document registry. Do not invent
--- document versions from CHUNK_INDEX.
+-- Legacy compatibility pointer.
+-- Canonical, version-controlled Snowflake SQL now lives under:
+--   sql/ddl/ai/001_create_contract_intelligence_tables.sql
+--   sql/ddl/ai/002_upgrade_document_chunks.sql
+--   sql/dml/ai/001_document_registry_and_status.sql
+--   sql/dml/ai/002_contract_terms.sql
+--
+-- Run the DDL scripts in numeric order. Run DML templates only after replacing
+-- their session-variable placeholders with real, reviewed document/workflow data.
+-- This file is intentionally retained so older documentation/import paths do not
+-- silently execute an incomplete ALTER-only migration.
