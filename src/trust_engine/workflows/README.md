@@ -81,16 +81,16 @@ with sqlite_checkpointer(settings.trust_checkpoint_db) as checkpointer:
         checkpointer=checkpointer,
     )
 
-    status = get_workflow_status(
-        "contract-C1001-review-001", settings.trust_checkpoint_db
-    )
-    events = list_workflow_events(
-        "contract-C1001-review-001", settings.trust_checkpoint_db
-    )
+status = get_workflow_status(
+    "contract-C1001-review-001", settings.trust_checkpoint_db
+)
+events = list_workflow_events(
+    "contract-C1001-review-001", settings.trust_checkpoint_db
+)
 
-    # After a reviewer has made a decision, reopen the same persistent
-    # checkpointer and resume using the same thread ID.
-    if status and status["status"] == "WAITING_FOR_APPROVAL":
+# Called later by the authenticated reviewer callback, potentially days later.
+if status and status["status"] == "WAITING_FOR_APPROVAL":
+    with sqlite_checkpointer(settings.trust_checkpoint_db) as checkpointer:
         result = resume_contract_workflow(
             thread_id="contract-C1001-review-001",
             decision="APPROVED",
