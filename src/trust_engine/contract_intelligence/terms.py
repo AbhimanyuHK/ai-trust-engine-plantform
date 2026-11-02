@@ -14,7 +14,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from trust_engine.common.config.settings import Settings
-from trust_engine.common.infrastructure.db import execute, query
+from trust_engine.common.infrastructure.db import query
 from .cortex import complete
 
 
@@ -92,7 +92,7 @@ def _validate_candidate(item: dict[str, Any], chunk: dict[str, Any]) -> Contract
     clause_text = str(item.get("clause_text") or "").strip()
     if not clause_text or not document_id or not contract_id or page < 1:
         raise ValueError("Candidate is missing source document, contract, page, or clause text")
-    identity = "|".join((document_id, code, str(start or ""), str(end or ""), quote))
+    identity = "|".join((document_id, code, str(start or ""), str(end or ""), str(_value(chunk, "PAGE_NUMBER", "")), str(clause or ""), quote))
     candidate_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     return ContractTermCandidate(
         candidate_id=candidate_id,
@@ -276,6 +276,10 @@ def validate_amendment_precedence(
            WHERE CONTRACT_ID = %s""",
         (contract_id,), settings,
     )
+    if not proposals:
+        findings.append({"code": "NO_TERM_CANDIDATES", "severity": "REVIEW",
+                         "message": "No extracted term candidates are available for this document."})
+
     for proposal in proposals:
         code = str(_value(proposal, "TERM_CODE", ""))
         start_raw = _value(proposal, "EFFECTIVE_FROM")
