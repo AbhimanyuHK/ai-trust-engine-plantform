@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 from trust_engine.analytics import ask_analytics
 from trust_engine.cortex import grounded_contract_answer
 from trust_engine.governance import create_approval, decide_approval, get_approval
+from trust_engine.settings import Settings
+from trust_engine.workflows import sqlite_checkpointer, start_contract_workflow, resume_contract_workflow
 
 app = FastAPI(title="AI TRUST Engine API", version="0.2.0")
 
@@ -15,6 +17,18 @@ class ContractQuestion(BaseModel):
 
 class AnalyticsQuestion(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
+
+class WorkflowStart(BaseModel):
+    question: str = Field(min_length=3, max_length=4000)
+    thread_id: str
+    contract_id: str | None = None
+    partner_id: str | None = None
+
+class WorkflowResume(BaseModel):
+    decision: str
+    reviewer: str
+    reason: str
+    modified_payload: dict[str, Any] | None = None
 
 class ApprovalCreate(BaseModel):
     recommendation_id: str
@@ -82,3 +96,24 @@ def approval_decision(approval_id: str, request: ApprovalDecision) -> dict[str, 
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.post("/v1/workflows/contracts/{thread_id}/start")
+def start_contract(thread_id: str, request: ContractQuestion) -> dict[str, Any]:
+    try:
+        with sqlite_checkpointer(Settings().trust_checkpoint_db) as saver:
+            return start_contract_workflow(request.question, thread_id, request.contract_id,
+                                           request.partner_id, saver)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Contract workflow could not start") from exc
+
+@app.post("/v1/workflows/contracts/{thread_id}/resume")
+def resume_contract(thread_id: str, request: WorkflowResume) -> dict[str, Any]:
+    try:
+        with sqlite_checkpointer(Settings().trust_checkpoint_db) as saver:
+            return resume_contract_workflow(thread_id, request.decision, request.reviewer,
+                                            request.reason, saver, request.modified_payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Contract workflow could not resume") from exc
