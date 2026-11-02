@@ -63,7 +63,12 @@ def _registry_connection(path: str):
             )"""
         )
         conn.commit()
-        yield conn
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
     finally:
         conn.close()
 
@@ -92,7 +97,7 @@ def _record_workflow(
                    WHERE thread_id=?""",
                 (
                     status, now,
-                    now if status in {"COMPLETED", "APPROVED", "REJECTED", "FAILED"} else None,
+                    now if status in {"COMPLETED", "APPROVED", "REJECTED", "REVISION_REQUIRED", "FAILED"} else None,
                     error,
                     event_type,
                     thread_id,
@@ -302,7 +307,7 @@ def start_contract_workflow(
     try:
         result = graph.invoke(
             {"question": question, "contract_id": contract_id, "partner_id": partner_id},
-            config={"configurable": {"thread_id": thread_id}},
+            config=config,
         )
         status = _status_from_result(result)
         _record_workflow(
@@ -344,10 +349,26 @@ def resume_contract_workflow(
     current = get_workflow_status(thread_id, checkpoint_path)
     if not current:
         raise ValueError(f"Unknown workflow thread: {thread_id}")
-    if current["status"] != "WAITING_FOR_APPROVAL":
+    if current["status"] not in {"WAITING_FOR_APPROVAL", "RESUMING"}:
         raise ValueError(
-            f"Workflow {thread_id!r} is {current['status']}, not WAITING_FOR_APPROVAL"
+            f"Workflow {thread_id!r} is {current['status']}, not awaiting or recovering approval"
         )
+
+    # A process may have crashed after recording RESUMING. Inspect the persisted
+    # checkpoint before replaying the resume command to avoid applying a decision twice.
+    graph = build_contract_graph(checkpointer)
+    config = {"configurable": {"thread_id": thread_id}}
+    if current["status"] == "RESUMING":
+        snapshot = graph.get_state(config)
+        if snapshot and not snapshot.next:
+            recovered = dict(snapshot.values)
+            recovered_status = _status_from_result(recovered)
+            _record_workflow(
+                checkpoint_path, thread_id, recovered_status,
+                event_type="WORKFLOW_RESUME_RECOVERED",
+                details={"state_status": recovered.get("status")},
+            )
+            return recovered
 
     _record_workflow(
         checkpoint_path, thread_id, "RESUMING", event_type="APPROVAL_SUBMITTED",
@@ -356,7 +377,6 @@ def resume_contract_workflow(
             "modified_payload": modified_payload,
         },
     )
-    graph = build_contract_graph(checkpointer)
     try:
         result = graph.invoke(
             Command(resume={
