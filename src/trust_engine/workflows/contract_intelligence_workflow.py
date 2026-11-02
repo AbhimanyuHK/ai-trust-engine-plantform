@@ -42,7 +42,10 @@ class ContractIntelligenceWorkflowState(TypedDict, total=False):
     max_attempts: int
     base_delay_seconds: float
     artifact_bucket: str | None
+    search_refresh_timeout_seconds: float
+    search_refresh_poll_interval_seconds: float
     chunk_count: int
+    search_index_status: str
     status: str
     current_stage: str
     error_message: str | None
@@ -353,12 +356,14 @@ def _execute_payload(
     workflow_attempt: int = 1,
     settings: Settings | None = None,
     ingest_callable: Callable[..., list[DocumentChunk]] = retry_ingest_pdf,
+    refresh_callable: Callable[..., dict[str, Any]] = _refresh_and_wait_for_cortex_search,
 ) -> dict[str, Any]:
     document_id = payload["document_id"]
     contract_id = payload["contract_id"]
     source = payload["source"]
     graph = build_contract_intelligence_graph(
-        ingest_callable=ingest_callable, settings=settings
+        ingest_callable=ingest_callable, refresh_callable=refresh_callable,
+        settings=settings,
     )
 
     try:
@@ -397,7 +402,11 @@ def _execute_payload(
             run_id=run_id, document_id=document_id, contract_id=contract_id,
             source_uri=source, partner_id=payload.get("partner_id"),
             status="FAILED", event_type="DOCUMENT_INGESTION_FAILED",
-            current_stage="CORTEX_SEARCH_INDEXING" if "chunk_count" in locals() else "DOCUMENT_INGESTION",
+            current_stage=(
+                "CORTEX_SEARCH_INDEXING"
+                if "result" in locals() and isinstance(result, dict) and "chunk_count" in result
+                else "DOCUMENT_INGESTION"
+            ),
             attempt=workflow_attempt,
             error_message=str(exc)[:16000],
             details={"error_type": type(exc).__name__, "error": str(exc)[:16000]},
