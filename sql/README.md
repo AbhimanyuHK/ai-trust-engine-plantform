@@ -19,3 +19,13 @@ All Contract Intelligence SQL is organized by operation:
 
 Snowflake standard-table primary/unique constraints are informational; stable IDs,
 MERGE idempotency and application-level validation are required.
+
+
+## Workflow and Cortex Search deployment
+
+After the base Contract Intelligence tables are present, run:
+
+1. `ddl/ai/003_contract_intelligence_workflow.sql` for Snowflake workflow-run status and append-only events.
+2. `ddl/ai/004_create_contract_search_service.sql` for managed embeddings and Cortex Search indexing over `AI.DOCUMENT_CHUNKS`.
+
+The Cortex Search script expects the `TRUST_WH` warehouse and a role with the required schema, table, warehouse, Cortex Search, and Cortex embedding privileges. It uses `snowflake-arctic-embed-l-v2.0` and a one-hour target lag. Index refresh is asynchronous; successful chunk persistence is not proof that new rows are already searchable.
