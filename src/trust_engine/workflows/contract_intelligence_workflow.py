@@ -9,7 +9,7 @@ import json
 import re
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Any, Callable, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -95,7 +95,10 @@ def _refresh_and_wait_for_cortex_search(
         raise ValueError("CORTEX_SEARCH_SERVICE must be a safe DATABASE.SCHEMA.SERVICE identifier")
     database, schema, service = (part.upper() for part in parts)
     service_fqn = ".".join((database, schema, service))
-    started_at = datetime.now(timezone.utc).isoformat()
+    clock_rows = query("SELECT CURRENT_TIMESTAMP() AS STARTED_AT", (), cfg)
+    if not clock_rows:
+        raise RuntimeError("Snowflake did not return a timestamp for Cortex refresh tracking")
+    started_at = clock_rows[0].get("STARTED_AT")
 
     with connection(cfg) as conn, conn.cursor() as cur:
         cur.execute(f"ALTER CORTEX SEARCH SERVICE {service_fqn} REFRESH")
