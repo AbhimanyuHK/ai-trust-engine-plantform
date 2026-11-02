@@ -316,3 +316,44 @@ The contract-intelligence orchestration requires two additional Snowflake script
 - `sql/ddl/ai/004_create_contract_search_service.sql` creates the managed Cortex Search service over `AI.DOCUMENT_CHUNKS`.
 
 Run both after the base document/chunk DDL. Confirm `TRUST_WH` exists and the deployment role has Cortex Search creation and embedding privileges. Cortex Search manages embeddings and refreshes asynchronously; workflow completion means chunk persistence succeeded, not that every chunk is already searchable.
+
+
+## Contract clause and royalty-term extraction
+
+After document ingestion, call the extraction API:
+
+```python
+from trust_engine.contract_intelligence import (
+    extract_contract_terms,
+    validate_amendment_precedence,
+)
+
+candidates = extract_contract_terms("DOC002")
+validation = validate_amendment_precedence("DOC002")
+```
+
+Extraction uses Cortex LLM output only as an untrusted proposal. Each candidate
+must include a verbatim evidence quote found in its source chunk. Unsupported
+quotes, invalid percentages and invalid date ranges are rejected. Document,
+contract-version, page and clause lineage are copied from Snowflake chunk
+metadata, not invented by the model. Overlapping chunks are de-duplicated by
+stable candidate IDs. Candidates are persisted to
+`AI.CONTRACT_TERM_CANDIDATES` with `PENDING` status; extraction never approves
+or activates contractual terms. Pass `persist=False` to return candidates
+without writing them.
+
+`validate_amendment_precedence(document_id)` checks amendment parent lineage,
+contract identity, monotonically increasing contract version, explicit
+amendment effective date, and date overlaps between proposals and approved
+terms. It returns `VALID`, `REVIEW_REQUIRED`, or `INVALID` with findings.
+Overlaps require authorized review; the function never silently changes
+historical approved terms or determines legal precedence from version number
+alone.
+
+Deploy `sql/ddl/ai/005_contract_term_candidates.sql` after the base Contract
+Intelligence DDL. The extraction process requires Cortex LLM access and
+Snowflake read/write privileges. The candidate table is a review queue, not
+the authoritative terms table. Only an authorized approval process should
+promote a reviewed proposal into `AI.CONTRACT_TERMS`; downstream calculations
+must continue to read `AI.APPROVED_CONTRACT_TERMS` using the transaction's
+business date.
