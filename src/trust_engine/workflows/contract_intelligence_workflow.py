@@ -396,9 +396,12 @@ def _execute_payload(
     document_id = payload["document_id"]
     contract_id = payload["contract_id"]
     source = payload["source"]
+    stage_tracker = {"current_stage": "DOCUMENT_INGESTION"}
+
     def record_stage_event(
         event_type: str, stage: str, details: dict[str, Any]
     ) -> None:
+        stage_tracker["current_stage"] = stage
         _record_workflow(
             run_id=run_id, document_id=document_id, contract_id=contract_id,
             source_uri=source, partner_id=payload.get("partner_id"),
@@ -448,12 +451,7 @@ def _execute_payload(
             run_id=run_id, document_id=document_id, contract_id=contract_id,
             source_uri=source, partner_id=payload.get("partner_id"),
             status="FAILED", event_type="DOCUMENT_INGESTION_FAILED",
-            current_stage=(
-                "CORTEX_SEARCH_INDEXING"
-                if isinstance(exc, CortexSearchRefreshError)
-                or ("result" in locals() and isinstance(result, dict) and "chunk_count" in result)
-                else "DOCUMENT_INGESTION"
-            ),
+            current_stage=stage_tracker["current_stage"],
             attempt=workflow_attempt,
             error_message=str(exc)[:16000],
             details={"error_type": type(exc).__name__, "error": str(exc)[:16000]},
