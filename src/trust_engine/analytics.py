@@ -22,8 +22,10 @@ def validate_read_only_sql(sql: str, allowed_objects: set[str] | None = None) ->
     tree=statements[0]
     if not isinstance(tree,(exp.Select,exp.Union)):
         raise ValueError("Only SELECT queries are allowed")
-    forbidden=(exp.Insert,exp.Update,exp.Delete,exp.Merge,exp.Create,exp.Drop,exp.Alter,
-               exp.Command,exp.Copy)
+    forbidden_names=("Insert","Update","Delete","Merge","Create","Drop","Alter",
+                     "Command","Copy","Grant","Revoke","Transaction","Commit","Rollback")
+    forbidden=tuple(kind for name in forbidden_names
+                    if (kind:=getattr(exp,name,None)) is not None)
     if any(tree.find(kind) is not None for kind in forbidden):
         raise ValueError("Mutating or administrative SQL is not allowed")
     if allowed_objects is not None:
