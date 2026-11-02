@@ -42,7 +42,7 @@ class DocumentChunk:
     clause_number: str | None = None
     page_end: int | None = None
     parser_version: str = "pypdf-v1"
-    chunking_version: str = "recursive-page-v2"
+    chunking_version: str = "page-window-v2"
 
 
 def sha256_file(path: str | Path) -> str:
@@ -354,7 +354,7 @@ def ingest_pdf(
             "effective_from": effective_date,
             "effective_to": expiry_date,
             "parser_version": "pypdf-v1",
-            "chunking_version": "recursive-page-v2",
+            "chunking_version": "page-window-v2",
             "chunk_count": len(chunks),
         }
         write_artifacts(
