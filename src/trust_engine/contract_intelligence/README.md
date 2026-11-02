@@ -246,3 +246,61 @@ before treating those tables as automatically maintained.
 - Apply partner-level authorization before returning contract evidence.
 - Treat OCR output and LLM-extracted terms as untrusted until validated.
 - Test S3, Snowflake and Cortex integration in a non-production environment before deployment.
+
+## Contract Intelligence workflow orchestration
+
+The LangGraph orchestration entry point is
+\`trust_engine.workflows.contract_intelligence_workflow\`. It calls the public
+Contract Intelligence ingestion API; it does not implement PDF parsing, OCR,
+chunking, embedding generation, or Snowflake chunk persistence itself.
+
+Usage:
+
+    from trust_engine.workflows import (
+        get_contract_intelligence_workflow_status,
+        list_contract_intelligence_workflow_events,
+        start_contract_intelligence_workflow,
+    )
+
+    result = start_contract_intelligence_workflow(
+        "s3://ai-trust-engine-prod/contracts/PARTNER_1001/C1001/document-versions/v0002/original/DOC002.pdf",
+        contract_id="C1001",
+        partner_id="PARTNER_1001",
+        document_id="DOC002",
+        document_version=2,
+        contract_version=2,
+        document_type="AMENDMENT",
+        run_id="CI-C1001-DOC002-INGEST-001",
+        max_attempts=3,
+    )
+
+    status = get_contract_intelligence_workflow_status(result["run_id"])
+    events = list_contract_intelligence_workflow_events(result["run_id"])
+
+The workflow requires a stable caller-supplied document_id and stores its
+replayable request payload in AI.CONTRACT_INTELLIGENCE_WORKFLOW_RUNS.
+Current status is maintained in that table; append-only lifecycle events are
+written to AI.CONTRACT_INTELLIGENCE_WORKFLOW_EVENTS. Fine-grained document
+processing stages remain in AI.DOCUMENT_INGESTION_STATUS.
+
+If a process exits unexpectedly, call
+resume_contract_intelligence_workflow(run_id). Resume replays ingestion using
+the same run/document identifiers. Deterministic chunk IDs and Snowflake MERGE
+writes make this at-least-once replay idempotent; it is not a restoration of an
+in-memory LangGraph node checkpoint. Local file sources can only be resumed
+where the same file path remains accessible; immutable S3 source URIs are
+preferred for durable recovery.
+
+The workflow completes when extraction and chunk persistence succeed. It does
+not claim that Cortex Search has already indexed the new rows: Cortex Search
+refreshes asynchronously according to the configured service target lag. The
+service must be configured to select from AI.DOCUMENT_CHUNKS and expose the
+metadata columns used by search_contracts(). Cortex Search owns embedding
+generation/indexing for that service, so the workflow does not create a
+duplicate embedding vector column.
+
+Apply sql/ddl/ai/003_contract_intelligence_workflow.sql after the base
+Contract Intelligence DDL. Snowflake standard-table key constraints are
+informational; use stable run IDs, application-level duplicate checks and
+idempotent writes. Do not start the workflow before the DDL is deployed and
+the Snowflake role has the required table privileges.
