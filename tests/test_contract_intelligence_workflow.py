@@ -15,7 +15,10 @@ def test_contract_intelligence_graph_delegates_processing_to_ingestion():
         calls.append((source, kwargs))
         return [object(), object(), object()]
 
-    graph = build_contract_intelligence_graph(ingest_callable=fake_ingest)
+    graph = build_contract_intelligence_graph(
+        ingest_callable=fake_ingest,
+        refresh_callable=lambda **_kwargs: {"STATE": "SUCCEEDED", "REFRESH_TRIGGER": "MANUAL"},
+    )
     result = graph.invoke({
         "run_id": "RUN-1",
         "source": "s3://contracts/C-1/v1.pdf",
@@ -33,6 +36,8 @@ def test_contract_intelligence_graph_delegates_processing_to_ingestion():
     assert result["status"] == "COMPLETED"
     assert result["current_stage"] == "CHUNKS_PERSISTED"
     assert result["chunk_count"] == 3
+    assert result["search_index_status"] == "SUCCEEDED"
+    assert result["search_refresh"]["STATE"] == "SUCCEEDED"
     assert calls[0][0] == "s3://contracts/C-1/v1.pdf"
     assert calls[0][1]["run_id"] == "RUN-1"
     assert calls[0][1]["document_id"] == "DOC-1"
