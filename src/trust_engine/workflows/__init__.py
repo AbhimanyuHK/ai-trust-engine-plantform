@@ -18,3 +18,21 @@ __all__ = [
     "sqlite_checkpointer",
     "start_contract_workflow",
 ]
+
+from .contract_intelligence_workflow import (
+    ContractIntelligenceWorkflowState,
+    build_contract_intelligence_graph,
+    get_contract_intelligence_workflow_status,
+    list_contract_intelligence_workflow_events,
+    resume_contract_intelligence_workflow,
+    start_contract_intelligence_workflow,
+)
+
+__all__ += [
+    "ContractIntelligenceWorkflowState",
+    "build_contract_intelligence_graph",
+    "get_contract_intelligence_workflow_status",
+    "list_contract_intelligence_workflow_events",
+    "resume_contract_intelligence_workflow",
+    "start_contract_intelligence_workflow",
+]
