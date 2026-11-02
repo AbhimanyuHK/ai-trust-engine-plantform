@@ -70,7 +70,7 @@ def test_ingestion_records_document_and_stage_lifecycle(monkeypatch, tmp_path):
     monkeypatch.setattr(ingestion, "local_document", lambda *_args, **_kwargs: nullcontext(source))
     monkeypatch.setattr(ingestion, "sha256_file", lambda _path: "a" * 64)
     monkeypatch.setattr(ingestion, "extract_pdf", lambda _path: [{"page_number": 1, "text": "terms"}])
-    monkeypatch.setattr(ingestion, "chunk_pages", lambda *args, **kwargs: [])
+    monkeypatch.setattr(ingestion, "chunk_pages", lambda *args, **kwargs: ["chunk"])
     monkeypatch.setattr(ingestion, "register_document", lambda **kwargs: events.append(("register", kwargs)))
     monkeypatch.setattr(
         ingestion, "record_ingestion_status",
@@ -84,7 +84,7 @@ def test_ingestion_records_document_and_stage_lifecycle(monkeypatch, tmp_path):
         source, contract_id="C-1", partner_id="P-1", run_id="RUN-1"
     )
 
-    assert result == []
+    assert result == ["chunk"]
     assert events[0][0] == "register"
     assert ("stage", "DOCUMENT_REGISTRATION", "SUCCEEDED") in events
     assert ("stage", "PDF_EXTRACTION", "RUNNING") in events
