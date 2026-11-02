@@ -6,7 +6,7 @@ name = "ai-trust-engine"
 version = "0.2.0"
 description = "Snowflake-native AI TRUST Engine workflows"
 requires-python = ">=3.10"
-dependencies = ["pydantic>=2.7,<3", "pydantic-settings>=2.2,<3", "PyYAML>=6.0", "pandas>=2.1", "numpy>=1.26", "snowflake-connector-python[pandas]>=3.10", "snowflake-snowpark-python>=1.20", "snowflake-core>=1.0", "scikit-learn>=1.4", "xgboost>=2.0", "pypdf>=4.2", "python-dateutil>=2.9", "typer>=0.12", "rich>=13.7", "fastapi>=0.111", "uvicorn[standard]>=0.30"]
+dependencies = ["pydantic>=2.7,<3", "pydantic-settings>=2.2,<3", "PyYAML>=6.0", "pandas>=2.1", "numpy>=1.26", "snowflake-connector-python[pandas]>=3.10", "snowflake-snowpark-python>=1.20", "snowflake-core>=1.0", "scikit-learn>=1.4", "xgboost>=2.0", "pypdf>=4.2", "python-dateutil>=2.9", "typer>=0.12", "rich>=13.7", "sqlglot>=25", "fastapi>=0.111", "uvicorn[standard]>=0.30"]
 [project.optional-dependencies]
 agent = ["langgraph>=0.2", "langgraph-checkpoint-sqlite>=2.0"]
 ui = ["streamlit>=1.35", "plotly>=5.22"]
