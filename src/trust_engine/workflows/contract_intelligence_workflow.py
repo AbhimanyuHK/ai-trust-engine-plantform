@@ -257,6 +257,14 @@ def _build_request_payload(
         raise ValueError("contract_id is required")
     if not document_id or not document_id.strip():
         raise ValueError("document_id is required and must be stable across retries")
+    if len(document_id) > 128 or len(contract_id) > 128:
+        raise ValueError("document_id and contract_id must not exceed 128 characters")
+    if partner_id and len(partner_id) > 128:
+        raise ValueError("partner_id must not exceed 128 characters")
+    if len(str(source)) > 2048:
+        raise ValueError("source URI/path must not exceed 2048 characters")
+    if document_name and len(document_name) > 1024:
+        raise ValueError("document_name must not exceed 1024 characters")
     if document_version < 1 or contract_version < 1:
         raise ValueError("document_version and contract_version must be >= 1")
     if chunk_size <= 0 or overlap < 0 or overlap >= chunk_size:
@@ -492,6 +500,8 @@ def start_contract_intelligence_workflow(
         search_refresh_poll_interval_seconds=search_refresh_poll_interval_seconds,
     )
     execution_id = run_id or str(uuid.uuid4())
+    if not execution_id.strip() or len(execution_id) > 128:
+        raise ValueError("run_id must contain 1-128 non-whitespace characters")
     if _load_run(execution_id, settings):
         raise ValueError(f"Workflow run_id already exists: {execution_id}")
     _record_workflow(
