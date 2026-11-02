@@ -248,7 +248,8 @@ resource "aws_iam_role_policy" "task" {
       { Effect = "Allow", Action = ["s3:ListBucket"], Resource = [aws_s3_bucket.contracts.arn] },
       { Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes", "sqs:SendMessage"], Resource = [aws_sqs_queue.ingestion.arn, aws_sqs_queue.recommendation.arn] },
       { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [var.snowflake_secret_arn] },
-      { Effect = "Allow", Action = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"], Resource = [aws_kms_key.documents.arn] }
+      { Effect = "Allow", Action = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"], Resource = [aws_kms_key.documents.arn] },
+      { Effect = "Allow", Action = ["textract:DetectDocumentText", "textract:AnalyzeDocument", "textract:StartDocumentTextDetection", "textract:GetDocumentTextDetection", "textract:StartDocumentAnalysis", "textract:GetDocumentAnalysis"], Resource = ["*"] }
     ]
   })
 }
@@ -526,4 +527,28 @@ resource "aws_cloudwatch_dashboard" "main" {
       }
     }]
   })
+}
+resource "aws_cloudwatch_metric_alarm" "ingestion_queue_age" {
+  alarm_name          = format("%s-ingestion-oldest-message", local.prefix)
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateAgeOfOldestMessage"
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 2
+  threshold           = 900
+  comparison_operator = "GreaterThanThreshold"
+  dimensions          = { QueueName = aws_sqs_queue.ingestion.name }
+  tags                = local.tags
+}
+resource "aws_cloudwatch_metric_alarm" "recommendation_queue_age" {
+  alarm_name          = format("%s-recommendation-oldest-message", local.prefix)
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateAgeOfOldestMessage"
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 2
+  threshold           = 900
+  comparison_operator = "GreaterThanThreshold"
+  dimensions          = { QueueName = aws_sqs_queue.recommendation.name }
+  tags                = local.tags
 }
