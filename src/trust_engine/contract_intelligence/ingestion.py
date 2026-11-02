@@ -396,7 +396,7 @@ def retry_ingest_pdf(
 
     for attempt in range(1, max_attempts + 1):
         try:
-            return ingest_pdf(
+            result = ingest_pdf(
                 source,
                 contract_id=contract_id,
                 document_id=document_id,
@@ -404,19 +404,29 @@ def retry_ingest_pdf(
                 attempt=attempt,
                 **ingest_options,
             )
+            if attempt > 1:
+                record_ingestion_status(
+                    run_id=run_id,
+                    document_id=document_id,
+                    stage="INGESTION_RETRY",
+                    status="SUCCEEDED",
+                    attempt=attempt,
+                )
+            return result
         except retryable_exceptions as exc:
-            if attempt >= max_attempts:
-                raise
-            # This row makes the retry decision visible independently of the
-            # failed processing-stage row. The next attempt updates stage attempts.
+            terminal = attempt >= max_attempts
             record_ingestion_status(
                 run_id=run_id,
                 document_id=document_id,
                 stage="INGESTION_RETRY",
-                status="RETRYING",
+                status="FAILED" if terminal else "RETRYING",
                 attempt=attempt,
                 error_message=str(exc)[:16000],
             )
+            if terminal:
+                raise
+            # This row makes the retry decision visible independently of the
+            # failed processing-stage row. The next attempt updates stage attempts.
             delay = base_delay_seconds * (2 ** (attempt - 1))
             if delay:
                 time.sleep(delay)
