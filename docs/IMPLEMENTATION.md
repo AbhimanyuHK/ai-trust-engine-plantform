@@ -62,6 +62,6 @@ REST endpoints: `GET /health`, `POST /v1/contracts/ask`, `POST /v1/analytics/ask
 - Forecasting currently predicts revenue (demand remains null until a reliable quantity target is configured). XGBoost is the default; LSTM is an optional sequence-model path. Royalty is calculated only when an authoritative decimal rate is supplied; the LLM never invents a rate.
 - Transaction `AMOUNT` must be normalized to a signed financial value upstream. Forecasting does not guess whether returns, credits or adjustments are positive or negative.
 - Forecast evaluation uses a chronological holdout, not random splitting. Add rolling-origin backtests and model registry promotion before claiming production SLAs.
-- LangGraph checkpoints represent execution state; Snowflake approval and audit tables represent business decisions. They are separate records.
+- LangGraph checkpoints represent execution state; Snowflake approval and audit tables represent business decisions. They are separate records. A workflow pauses at the reviewer interrupt and resumes with the same thread ID; it does not keep a model process running while a human is away.
 - SQLite checkpoints are for local development. Multi-instance production requires a shared durable checkpointer, authenticated reviewer identity, SSO/RBAC, API authentication, rate limits and network controls.
 - Verify Cortex model availability, search service syntax, warehouse sizing and grants in the target Snowflake account before deployment.
