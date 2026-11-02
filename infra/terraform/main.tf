@@ -116,12 +116,24 @@ resource "aws_s3_bucket_versioning" "contracts" {
     status = "Enabled"
   }
 }
+resource "aws_kms_key" "documents" {
+  description             = format("%s S3 document encryption", local.prefix)
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  tags                    = local.tags
+}
+resource "aws_kms_alias" "documents" {
+  name          = format("alias/%s-documents", local.prefix)
+  target_key_id = aws_kms_key.documents.key_id
+}
 resource "aws_s3_bucket_server_side_encryption_configuration" "contracts" {
   bucket = aws_s3_bucket.contracts.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.documents.arn
     }
+    bucket_key_enabled = true
   }
 }
 resource "aws_s3_bucket_public_access_block" "contracts" {
@@ -206,6 +218,18 @@ resource "aws_iam_role_policy_attachment" "execution" {
   role       = aws_iam_role.execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
+resource "aws_iam_role_policy" "execution_secrets" {
+  name = "read-snowflake-secret-for-ecs-injection"
+  role = aws_iam_role.execution.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = [var.snowflake_secret_arn]
+    }]
+  })
+}
 resource "aws_iam_role" "task" {
   name = format("%s-task", local.prefix)
   assume_role_policy = jsonencode({
@@ -223,7 +247,8 @@ resource "aws_iam_role_policy" "task" {
       { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = [format("%s/*", aws_s3_bucket.contracts.arn)] },
       { Effect = "Allow", Action = ["s3:ListBucket"], Resource = [aws_s3_bucket.contracts.arn] },
       { Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes", "sqs:SendMessage"], Resource = [aws_sqs_queue.ingestion.arn, aws_sqs_queue.recommendation.arn] },
-      { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [var.snowflake_secret_arn] }
+      { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [var.snowflake_secret_arn] },
+      { Effect = "Allow", Action = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"], Resource = [aws_kms_key.documents.arn] }
     ]
   })
 }
@@ -252,8 +277,16 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.api.arn
+    type             = var.acm_certificate_arn == null ? "forward" : "redirect"
+    target_group_arn = var.acm_certificate_arn == null ? aws_lb_target_group.api.arn : null
+    dynamic "redirect" {
+      for_each = var.acm_certificate_arn == null ? [] : [1]
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
   }
 }
 resource "aws_lb_listener" "https" {
