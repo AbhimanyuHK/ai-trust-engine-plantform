@@ -36,7 +36,7 @@ def test_contract_intelligence_graph_delegates_processing_to_ingestion():
     })
 
     assert result["status"] == "COMPLETED"
-    assert result["current_stage"] == "CHUNKS_PERSISTED"
+    assert result["current_stage"] == "CORTEX_SEARCH_INDEXED"
     assert result["chunk_count"] == 3
     assert result["search_index_status"] == "SUCCEEDED"
     assert result["search_refresh"]["STATE"] == "SUCCEEDED"
