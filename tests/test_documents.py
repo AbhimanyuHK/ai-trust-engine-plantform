@@ -57,3 +57,70 @@ def test_parse_s3_uri_rejects_invalid_values():
         except ValueError:
             continue
         raise AssertionError(f"Expected invalid S3 URI to fail: {value}")
+
+
+
+def test_ingestion_records_document_and_stage_lifecycle(monkeypatch, tmp_path):
+    from contextlib import nullcontext
+    import trust_engine.contract_intelligence.ingestion as ingestion
+
+    source = tmp_path / "contract.pdf"
+    source.write_bytes(b"pdf bytes")
+    events = []
+    monkeypatch.setattr(ingestion, "local_document", lambda *_args, **_kwargs: nullcontext(source))
+    monkeypatch.setattr(ingestion, "sha256_file", lambda _path: "a" * 64)
+    monkeypatch.setattr(ingestion, "extract_pdf", lambda _path: [{"page_number": 1, "text": "terms"}])
+    monkeypatch.setattr(ingestion, "chunk_pages", lambda *args, **kwargs: [])
+    monkeypatch.setattr(ingestion, "register_document", lambda **kwargs: events.append(("register", kwargs)))
+    monkeypatch.setattr(
+        ingestion, "record_ingestion_status",
+        lambda **kwargs: events.append(("stage", kwargs["stage"], kwargs["status"])),
+    )
+    monkeypatch.setattr(ingestion, "persist_chunks", lambda _chunks: 0)
+    monkeypatch.setattr(ingestion, "_set_document_ingestion_status",
+                        lambda _document_id, status: events.append(("document", status)))
+
+    result = ingestion.ingest_pdf(
+        source, contract_id="C-1", partner_id="P-1", run_id="RUN-1"
+    )
+
+    assert result == []
+    assert events[0][0] == "register"
+    assert ("stage", "DOCUMENT_REGISTRATION", "SUCCEEDED") in events
+    assert ("stage", "PDF_EXTRACTION", "RUNNING") in events
+    assert ("stage", "PDF_EXTRACTION", "SUCCEEDED") in events
+    assert ("stage", "CHUNK_PERSISTENCE", "RUNNING") in events
+    assert ("stage", "CHUNK_PERSISTENCE", "SUCCEEDED") in events
+    assert events[-1] == ("document", "SUCCEEDED")
+
+
+def test_ingestion_marks_failed_stage_and_document(monkeypatch, tmp_path):
+    from contextlib import nullcontext
+    import trust_engine.contract_intelligence.ingestion as ingestion
+
+    source = tmp_path / "broken.pdf"
+    source.write_bytes(b"not a real pdf")
+    events = []
+    monkeypatch.setattr(ingestion, "local_document", lambda *_args, **_kwargs: nullcontext(source))
+    monkeypatch.setattr(ingestion, "sha256_file", lambda _path: "b" * 64)
+    monkeypatch.setattr(ingestion, "register_document", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        ingestion, "record_ingestion_status",
+        lambda **kwargs: events.append((kwargs["stage"], kwargs["status"], kwargs.get("error_message"))),
+    )
+    monkeypatch.setattr(ingestion, "_set_document_ingestion_status",
+                        lambda _document_id, status: events.append(("DOCUMENT", status, None)))
+    monkeypatch.setattr(ingestion, "extract_pdf",
+                        lambda _path: (_ for _ in ()).throw(RuntimeError("bad PDF")))
+
+    try:
+        ingestion.ingest_pdf(source, contract_id="C-2", run_id="RUN-2")
+    except RuntimeError as exc:
+        assert str(exc) == "bad PDF"
+    else:
+        raise AssertionError("expected extraction failure")
+
+    assert ("PDF_EXTRACTION", "RUNNING", None) in events
+    assert any(stage == "PDF_EXTRACTION" and status == "FAILED" and error == "bad PDF"
+               for stage, status, error in events)
+    assert ("DOCUMENT", "FAILED", None) in events
