@@ -230,3 +230,38 @@ def test_retry_ingest_pdf_marks_exhausted_retry_failed(monkeypatch):
 
     assert [item["status"] for item in statuses] == ["RETRYING", "FAILED"]
     assert [item["attempt"] for item in statuses] == [1, 2]
+
+
+
+def test_ingestion_rejects_pdf_without_searchable_chunks(monkeypatch, tmp_path):
+    from contextlib import nullcontext
+    import trust_engine.contract_intelligence.ingestion as ingestion
+
+    source = tmp_path / "empty.pdf"
+    source.write_bytes(b"pdf bytes")
+    events = []
+    monkeypatch.setattr(ingestion, "local_document", lambda *_args, **_kwargs: nullcontext(source))
+    monkeypatch.setattr(ingestion, "sha256_file", lambda _path: "c" * 64)
+    monkeypatch.setattr(ingestion, "register_document", lambda **_kwargs: None)
+    monkeypatch.setattr(ingestion, "extract_pdf", lambda _path: [{"page_number": 1, "text": ""}])
+    monkeypatch.setattr(ingestion, "chunk_pages", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        ingestion, "record_ingestion_status",
+        lambda **kwargs: events.append((kwargs["stage"], kwargs["status"])),
+    )
+    monkeypatch.setattr(
+        ingestion, "_set_document_ingestion_status",
+        lambda _document_id, status: events.append(("DOCUMENT", status)),
+    )
+
+    try:
+        ingestion.ingest_pdf(
+            source, contract_id="C-EMPTY", document_id="DOC-EMPTY", run_id="RUN-EMPTY"
+        )
+    except ValueError as exc:
+        assert "no searchable text chunks" in str(exc)
+    else:
+        raise AssertionError("empty PDF text must not be marked as a successful ingestion")
+
+    assert ("PDF_EXTRACTION", "FAILED") in events
+    assert ("DOCUMENT", "FAILED") in events
