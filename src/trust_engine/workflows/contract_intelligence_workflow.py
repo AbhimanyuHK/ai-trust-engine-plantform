@@ -403,7 +403,8 @@ def _execute_payload(
             run_id=run_id, document_id=document_id, contract_id=contract_id,
             source_uri=source, partner_id=payload.get("partner_id"),
             status="RUNNING", event_type=event_type, current_stage=stage,
-            attempt=workflow_attempt, details=details, settings=settings,
+            attempt=workflow_attempt, chunk_count=details.get("chunk_count"),
+            details=details, settings=settings,
         )
 
     graph = build_contract_intelligence_graph(
