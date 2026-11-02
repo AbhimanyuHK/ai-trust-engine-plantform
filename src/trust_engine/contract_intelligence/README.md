@@ -291,13 +291,15 @@ in-memory LangGraph node checkpoint. Local file sources can only be resumed
 where the same file path remains accessible; immutable S3 source URIs are
 preferred for durable recovery.
 
-The workflow completes when extraction and chunk persistence succeed. It does
-not claim that Cortex Search has already indexed the new rows: Cortex Search
-refreshes asynchronously according to the configured service target lag. The
-service must be configured to select from AI.DOCUMENT_CHUNKS and expose the
-metadata columns used by search_contracts(). Cortex Search owns embedding
-generation/indexing for that service, so the workflow does not create a
-duplicate embedding vector column.
+After extraction and chunk persistence, the workflow issues a manual Cortex
+Search refresh and waits for the matching row in
+INFORMATION_SCHEMA.CORTEX_SEARCH_REFRESH_HISTORY to reach SUCCEEDED. Workflow
+status becomes COMPLETED only after the refresh succeeds. The wait is bounded
+(default 600 seconds); failure or timeout is recorded as FAILED at
+CORTEX_SEARCH_INDEXING. The execution role needs OPERATE on the Cortex Search
+service. Cortex Search owns embedding generation/indexing, so the workflow does
+not create a duplicate embedding vector column. The service must select from
+AI.DOCUMENT_CHUNKS and expose the metadata columns used by search_contracts().
 
 Apply sql/ddl/ai/003_contract_intelligence_workflow.sql after the base
 Contract Intelligence DDL. Snowflake standard-table key constraints are
