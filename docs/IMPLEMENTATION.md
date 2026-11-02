@@ -7,11 +7,12 @@ The Python application layer is under `src/trust_engine`; Snowflake objects are 
 - `settings.py` and `db.py`: environment/YAML configuration and Snowflake DB-API access.
 - `documents.py`: page-aware PDF text extraction, overlapping chunking and idempotent chunk merge.
 - `cortex.py`: Cortex Search Preview, Cortex Complete and grounded evidence assembly.
-- `forecasting.py`: daily calendarized revenue features, chronological holdout, XGBoost inference and forecast persistence.
+- `forecasting.py` and `lstm.py`: daily calendarized revenue features, chronological holdout, XGBoost and optional LSTM inference with forecast persistence.
 - `governance.py`: deterministic approval thresholds, reviewer-role checks and transactional decision/audit writes.
 - `workflows.py`: LangGraph contract workflow with persisted interrupt and reviewer resume.
 - `analytics.py`: Cortex SQL generation, read-only validation and semantic object allowlist.
 - `api.py`: REST endpoints for contract questions, analytics and approvals.
+- `streamlit_app.py`: interactive contract, analytics/chart and approval review screens.
 - `cli.py`: configuration validation, PDF ingestion, forecasting and approval operations.
 
 ## Setup
@@ -20,7 +21,9 @@ The Python application layer is under `src/trust_engine`; Snowflake objects are 
 python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
-pip install -e ".[dev,agent]"
+pip install -e ".[dev,agent,ui]"
+# Optional TensorFlow model: pip install -e ".[lstm]"
+# Optional scanned-PDF OCR dependencies: pip install -e ".[ocr]"
 copy .env.example .env
 ```
 
@@ -45,6 +48,7 @@ trust-engine validate-config
 trust-engine ingest-contract ./contract.pdf --contract-id CONTRACT_101 --partner-id CONTRACTOR_101
 trust-engine forecast --horizon-days 60
 uvicorn trust_engine.api:app --host 127.0.0.1 --port 8000
+# Or launch the interactive UI: streamlit run src/trust_engine/streamlit_app.py
 ```
 
 REST endpoints: `GET /health`, `POST /v1/contracts/ask`, `POST /v1/analytics/ask`,
@@ -55,7 +59,7 @@ REST endpoints: `GET /health`, `POST /v1/contracts/ask`, `POST /v1/analytics/ask
 
 - Cortex Search manages its retrieval index; no external vector database is introduced.
 - The base PDF parser extracts text and page references. Scanned PDFs need a configured OCR worker; empty text is not treated as successful extraction.
-- Forecasting currently predicts revenue. Royalty is calculated only when an authoritative decimal rate is supplied; the LLM never invents a rate.
+- Forecasting currently predicts revenue (demand remains null until a reliable quantity target is configured). XGBoost is the default; LSTM is an optional sequence-model path. Royalty is calculated only when an authoritative decimal rate is supplied; the LLM never invents a rate.
 - Transaction `AMOUNT` must be normalized to a signed financial value upstream. Forecasting does not guess whether returns, credits or adjustments are positive or negative.
 - Forecast evaluation uses a chronological holdout, not random splitting. Add rolling-origin backtests and model registry promotion before claiming production SLAs.
 - LangGraph checkpoints represent execution state; Snowflake approval and audit tables represent business decisions. They are separate records.
