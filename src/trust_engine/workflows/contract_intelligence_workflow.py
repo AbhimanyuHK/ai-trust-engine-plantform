@@ -93,8 +93,8 @@ def _refresh_and_wait_for_cortex_search(
     parts = cfg.cortex_search_service.split(".")
     if len(parts) != 3 or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", part) for part in parts):
         raise ValueError("CORTEX_SEARCH_SERVICE must be a safe DATABASE.SCHEMA.SERVICE identifier")
-    database, schema, service = parts
-    service_fqn = ".".join(parts)
+    database, schema, service = (part.upper() for part in parts)
+    service_fqn = ".".join((database, schema, service))
     started_at = datetime.now(timezone.utc).isoformat()
 
     with connection(cfg) as conn, conn.cursor() as cur:
@@ -103,7 +103,7 @@ def _refresh_and_wait_for_cortex_search(
     history_sql = f"""
         SELECT NAME, DATABASE_NAME, SCHEMA_NAME, STATE, REFRESH_TRIGGER,
                REFRESH_START_TIME, REFRESH_END_TIME, DATA_TIMESTAMP, ERROR
-        FROM TABLE(INFORMATION_SCHEMA.CORTEX_SEARCH_REFRESH_HISTORY(
+        FROM TABLE({database}.INFORMATION_SCHEMA.CORTEX_SEARCH_REFRESH_HISTORY(
             NAME => '{service}',
             DATA_TIMESTAMP_START => DATEADD(HOUR, -24, CURRENT_TIMESTAMP()),
             RESULT_LIMIT => 100
