@@ -35,9 +35,10 @@ Set Snowflake account, user, authentication and role values in `.env`. Never com
 2. `snowflake/database/schemas.sql`
 3. `snowflake/stages/*.sql`
 4. `snowflake/tables/*.sql`
-5. `snowflake/procedures/*.sql`
-6. `snowflake/cortex/*.sql`
-7. `snowflake/tasks/*.sql`
+5. `snowflake/migrations/*.sql` (for existing installations)
+6. `snowflake/procedures/*.sql`
+7. `snowflake/cortex/*.sql`
+8. `snowflake/tasks/*.sql`
 
 Deploy all table DDL before running the API or CLI against Snowflake.
 
