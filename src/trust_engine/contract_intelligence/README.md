@@ -157,6 +157,51 @@ including `CONTRACT_ID`, `PARTNER_ID`, `DOCUMENT_ID`, `DOCUMENT_VERSION`,
 `CONTRACT_VERSION`, and effective dates where supported. Search results should
 return source document, page and clause references for citations.
 
+## Snowflake SQL layout and deployment
+
+Snowflake DDL and DML are maintained separately at the repository root:
+
+```text
+sql/
+├── ddl/ai/
+│   ├── 001_create_contract_intelligence_tables.sql
+│   └── 002_upgrade_document_chunks.sql
+└── dml/ai/
+    ├── 001_document_registry_and_status.sql
+    └── 002_contract_terms.sql
+```
+
+### Deployment order
+
+1. For a new environment, run `sql/ddl/ai/001_create_contract_intelligence_tables.sql`.
+   It creates schema `AI` and the `DOCUMENTS`, `DOCUMENT_CHUNKS`,
+   `CONTRACT_TERMS`, `DOCUMENT_INGESTION_STATUS` tables plus the
+   `APPROVED_CONTRACT_TERMS` view.
+2. For an existing environment with an older `AI.DOCUMENT_CHUNKS` table, run
+   `sql/ddl/ai/002_upgrade_document_chunks.sql` to add lineage/provenance columns.
+   The upgrade is additive; it does not fabricate document IDs or version values.
+3. Use the scripts under `sql/dml/ai/` as operational templates. Replace every
+   `replace-with-...` value and review the SQL before execution. Do not run the
+   templates unchanged.
+4. Register each immutable source document before/alongside ingestion, record
+   each processing stage in `DOCUMENT_INGESTION_STATUS`, and mark the document
+   complete only after all required stages succeed.
+5. Add a row to `CONTRACT_TERMS` only after human review and required legal /
+   signature verification. Preserve historical terms and use effective dates
+   when selecting the term for a transaction.
+
+Snowflake standard-table primary-key and unique constraints are informational
+rather than enforced. The application must preserve uniqueness through stable
+IDs, idempotent MERGE operations, and validation queries. The SQL DML examples
+are templates; the Python ingestion implementation currently persists chunks,
+while document-registry/status writes must be wired into the orchestration layer
+before treating those tables as automatically maintained.
+
+The legacy
+`src/trust_engine/contract_intelligence/contract_intelligence_schema.sql`
+is retained as a pointer to the canonical scripts; do not use it as the deployment
+entrypoint.
+
 ## Operational requirements
 
 - Make ingestion idempotent using document IDs, version IDs and SHA-256 hashes.
