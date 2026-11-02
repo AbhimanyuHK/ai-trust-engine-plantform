@@ -1,7 +1,9 @@
-"""Snowflake Cortex Search and LLM adapters."""
+"""Snowflake Cortex Search SDK and current AI_COMPLETE adapters."""
 from __future__ import annotations
 import json
 from typing import Any
+from snowflake.snowpark import Session
+from snowflake.core import Root
 from trust_engine.db import query
 from trust_engine.settings import Settings
 
@@ -13,30 +15,42 @@ def search_contracts(question: str, *, contract_id: str | None = None,
     if not 1 <= limit <= 20:
         raise ValueError("limit must be between 1 and 20")
     cfg = settings or Settings()
-    filters = {}
+    parts = cfg.cortex_search_service.split(".")
+    if len(parts) != 3:
+        raise ValueError("CORTEX_SEARCH_SERVICE must be DATABASE.SCHEMA.SERVICE")
+    database, schema, service_name = parts
+    filters = []
     if contract_id:
-        filters["CONTRACT_ID"] = contract_id
+        filters.append({"@eq": {"CONTRACT_ID": contract_id}})
     if partner_id:
-        filters["PARTNER_ID"] = partner_id
-    options = {"query": question, "columns": ["CHUNK_TEXT","CONTRACT_ID","DOCUMENT_NAME",
-               "PAGE_NUMBER","SECTION","PARTNER_ID"], "limit": limit}
-    if filters:
-        options["filter"] = {"@and": [{"@eq": {k: v}} for k, v in filters.items()]}
-    rows = query("SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(%s, PARSE_JSON(%s)) AS RESULT",
-                 (cfg.cortex_search_service, json.dumps(options)), cfg)
-    if not rows:
-        return []
-    raw = rows[0].get("RESULT") or rows[0].get("result")
-    parsed = json.loads(raw) if isinstance(raw, str) else raw
-    return parsed.get("results", []) if isinstance(parsed, dict) else []
+        filters.append({"@eq": {"PARTNER_ID": partner_id}})
+    search_filter = {"@and": filters} if len(filters) > 1 else (filters[0] if filters else None)
+    session = Session.builder.configs(cfg.snowflake_config).create()
+    try:
+        service = (Root(session).databases[database].schemas[schema]
+                   .cortex_search_services[service_name])
+        kwargs: dict[str, Any] = {
+            "query": question,
+            "columns": ["CHUNK_TEXT", "CONTRACT_ID", "DOCUMENT_NAME", "PAGE_NUMBER",
+                        "SECTION", "PARTNER_ID", "COUNTRY"],
+            "limit": limit,
+        }
+        if search_filter:
+            kwargs["filter"] = search_filter
+        response = service.search(**kwargs)
+        parsed = json.loads(response.to_json())
+        return parsed.get("results", [])
+    finally:
+        session.close()
 
 def complete(prompt: str, *, model: str | None = None,
              settings: Settings | None = None) -> str:
     if not prompt.strip():
         raise ValueError("prompt must not be empty")
     cfg = settings or Settings()
-    rows = query("SELECT SNOWFLAKE.CORTEX.COMPLETE(%s, %s) AS RESPONSE",
-                 (model or cfg.cortex_llm_model, prompt), cfg)
+    sql = """SELECT AI_COMPLETE(%s,%s,
+             OBJECT_CONSTRUCT('temperature',0.1,'max_tokens',2000))::VARCHAR AS RESPONSE"""
+    rows = query(sql, (model or cfg.cortex_llm_model, prompt), cfg)
     return str(rows[0].get("RESPONSE") or rows[0].get("response") or "") if rows else ""
 
 def grounded_contract_answer(question: str, *, contract_id: str | None = None,
@@ -52,6 +66,7 @@ def grounded_contract_answer(question: str, *, contract_id: str | None = None,
             "page_number": hit.get("PAGE_NUMBER") or hit.get("page_number"),
             "section": hit.get("SECTION") or hit.get("section")})
     prompt = ("Answer only from the contract evidence below. If evidence does not answer the "
-      "question, say so. Do not infer missing rates, dates or obligations. Cite factual claims.\n"
+      "question, say so. Do not infer missing rates, dates or obligations. Cite factual claims "
+      "using contract ID, page and section.\n"
       f"QUESTION: {question}\nEVIDENCE:\n" + "\n---\n".join(evidence))
     return {"answer": complete(prompt), "citations": citations, "grounded": True}
