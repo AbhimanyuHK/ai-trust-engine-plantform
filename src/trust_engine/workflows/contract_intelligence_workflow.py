@@ -392,7 +392,8 @@ def resume_contract_intelligence_workflow(
         run_id=run_id, document_id=row["DOCUMENT_ID"], contract_id=row["CONTRACT_ID"],
         source_uri=row["SOURCE_URI"], partner_id=row.get("PARTNER_ID"),
         status="RUNNING", event_type="WORKFLOW_RESUME_REQUESTED",
-        current_stage="DOCUMENT_INGESTION", request_payload=payload, settings=settings,
+        current_stage="DOCUMENT_INGESTION", attempt=int(row.get("ATTEMPT") or 1) + 1,
+        request_payload=payload, settings=settings,
     )
     return _execute_payload(
         run_id=run_id, payload=payload, workflow_attempt=int(row.get("ATTEMPT") or 1) + 1,
