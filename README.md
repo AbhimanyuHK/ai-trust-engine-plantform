@@ -1376,6 +1376,8 @@ ai-trust-engine/
 
 The architecture is now backed by a Python application layer for PDF ingestion, Cortex Search/RAG, XGBoost and optional LSTM forecasting, resumable LangGraph HITL, governed natural-language analytics, a REST API and a Streamlit review UI.
 
+See **[docs/DOMAIN_STRUCTURE.md](docs/DOMAIN_STRUCTURE.md)** for domain boundaries and folder ownership.
+
 See **[docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)** for setup, Snowflake deployment order, CLI commands, API endpoints and known production-hardening requirements.
 
 Quick start:
