@@ -386,7 +386,7 @@ resource "aws_ecs_service" "ingestion" {
     security_groups  = [aws_security_group.tasks.id]
     assign_public_ip = false
   }
-  depends_on = [aws_iam_role_policy_attachment.execution]
+  depends_on = [aws_iam_role_policy_attachment.execution, aws_iam_role_policy.execution_secrets]
   tags = local.tags
 }
 resource "aws_ecs_service" "recommendation" {
@@ -400,7 +400,7 @@ resource "aws_ecs_service" "recommendation" {
     security_groups  = [aws_security_group.tasks.id]
     assign_public_ip = false
   }
-  depends_on = [aws_iam_role_policy_attachment.execution]
+  depends_on = [aws_iam_role_policy_attachment.execution, aws_iam_role_policy.execution_secrets]
   tags = local.tags
 }
 resource "aws_appautoscaling_target" "api" {
