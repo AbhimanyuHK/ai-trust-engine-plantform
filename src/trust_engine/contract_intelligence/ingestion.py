@@ -10,6 +10,7 @@ import hashlib
 import json
 import re
 import tempfile
+import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -250,8 +251,133 @@ def write_artifacts(
     return {name: f"s3://{bucket}/{key}" for name, (key, _) in artifacts.items()}
 
 
+def register_document(
+    *,
+    document_id: str,
+    contract_id: str,
+    document_name: str,
+    source_uri: str,
+    content_hash: str,
+    partner_id: str | None = None,
+    document_type: str = "ORIGINAL",
+    document_version: int = 1,
+    contract_version: int = 1,
+    parent_document_id: str | None = None,
+    effective_date: str | None = None,
+    expiry_date: str | None = None,
+    parser_version: str = "pypdf-v1",
+    chunking_version: str = "page-window-v2",
+) -> None:
+    """Register an immutable source document; reject ID reuse with different bytes."""
+    if not document_id or not contract_id or not document_name or not source_uri:
+        raise ValueError("document_id, contract_id, document_name and source_uri are required")
+    if document_version < 1 or contract_version < 1:
+        raise ValueError("document_version and contract_version must be >= 1")
+    if not re.fullmatch(r"[a-fA-F0-9]{64}", content_hash):
+        raise ValueError("content_hash must be a SHA-256 hex digest")
+
+    sql = """
+    MERGE INTO AI.DOCUMENTS T
+    USING (
+      SELECT %s::VARCHAR DOCUMENT_ID, %s::VARCHAR CONTRACT_ID,
+             %s::VARCHAR PARTNER_ID, %s::VARCHAR DOCUMENT_NAME,
+             %s::VARCHAR DOCUMENT_TYPE, %s::NUMBER DOCUMENT_VERSION,
+             %s::NUMBER CONTRACT_VERSION, %s::VARCHAR PARENT_DOCUMENT_ID,
+             %s::VARCHAR SOURCE_URI, %s::VARCHAR CONTENT_HASH,
+             %s::DATE EFFECTIVE_DATE, %s::DATE EXPIRY_DATE,
+             %s::VARCHAR PARSER_VERSION, %s::VARCHAR CHUNKING_VERSION
+    ) S
+    ON T.DOCUMENT_ID = S.DOCUMENT_ID
+    WHEN MATCHED AND T.CONTENT_HASH = S.CONTENT_HASH THEN UPDATE SET
+      T.UPDATED_AT = CURRENT_TIMESTAMP()
+    WHEN NOT MATCHED THEN INSERT (
+      DOCUMENT_ID, CONTRACT_ID, PARTNER_ID, DOCUMENT_NAME, DOCUMENT_TYPE,
+      DOCUMENT_VERSION, CONTRACT_VERSION, PARENT_DOCUMENT_ID, SOURCE_URI,
+      CONTENT_HASH, EFFECTIVE_DATE, EXPIRY_DATE, INGESTION_STATUS,
+      PARSER_VERSION, CHUNKING_VERSION
+    ) VALUES (
+      S.DOCUMENT_ID, S.CONTRACT_ID, S.PARTNER_ID, S.DOCUMENT_NAME, S.DOCUMENT_TYPE,
+      S.DOCUMENT_VERSION, S.CONTRACT_VERSION, S.PARENT_DOCUMENT_ID, S.SOURCE_URI,
+      S.CONTENT_HASH, S.EFFECTIVE_DATE, S.EXPIRY_DATE, 'PROCESSING',
+      S.PARSER_VERSION, S.CHUNKING_VERSION
+    )
+    """
+    params = (
+        document_id, contract_id, partner_id, document_name, document_type.upper(),
+        document_version, contract_version, parent_document_id, source_uri,
+        content_hash, effective_date, expiry_date, parser_version, chunking_version,
+    )
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute(sql, params)
+        cur.execute(
+            "SELECT CONTENT_HASH FROM AI.DOCUMENTS WHERE DOCUMENT_ID = %s",
+            (document_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise RuntimeError(f"Document registration did not create or find {document_id}")
+        stored_hash = row[0] if not isinstance(row, dict) else row.get("CONTENT_HASH") or row.get("content_hash")
+        if stored_hash != content_hash:
+            raise ValueError(
+                "DOCUMENT_ID already exists with different content; register the changed "
+                "source as a new document ID/version"
+            )
+
+
+def record_ingestion_status(
+    *,
+    run_id: str,
+    document_id: str,
+    stage: str,
+    status: str,
+    attempt: int = 1,
+    error_message: str | None = None,
+) -> None:
+    """Upsert the latest status for one document stage in an ingestion run."""
+    allowed = {"PENDING", "RUNNING", "SUCCEEDED", "FAILED", "RETRYING", "CANCELLED"}
+    normalized = status.upper()
+    if normalized not in allowed:
+        raise ValueError(f"Unsupported ingestion status: {status}")
+    if attempt < 1:
+        raise ValueError("attempt must be >= 1")
+    sql = """
+    MERGE INTO AI.DOCUMENT_INGESTION_STATUS T
+    USING (
+      SELECT %s::VARCHAR RUN_ID, %s::VARCHAR DOCUMENT_ID, %s::VARCHAR STAGE,
+             %s::VARCHAR STATUS, %s::NUMBER ATTEMPT, %s::VARCHAR ERROR_MESSAGE
+    ) S
+    ON T.RUN_ID = S.RUN_ID AND T.DOCUMENT_ID = S.DOCUMENT_ID AND T.STAGE = S.STAGE
+    WHEN MATCHED THEN UPDATE SET
+      T.STATUS = S.STATUS, T.ATTEMPT = S.ATTEMPT, T.ERROR_MESSAGE = S.ERROR_MESSAGE,
+      T.COMPLETED_AT = IFF(S.STATUS IN ('SUCCEEDED', 'FAILED', 'CANCELLED'),
+                           CURRENT_TIMESTAMP(), NULL),
+      T.UPDATED_AT = CURRENT_TIMESTAMP()
+    WHEN NOT MATCHED THEN INSERT (
+      RUN_ID, DOCUMENT_ID, STAGE, STATUS, ATTEMPT, ERROR_MESSAGE,
+      STARTED_AT, COMPLETED_AT, UPDATED_AT
+    ) VALUES (
+      S.RUN_ID, S.DOCUMENT_ID, S.STAGE, S.STATUS, S.ATTEMPT, S.ERROR_MESSAGE,
+      CURRENT_TIMESTAMP(),
+      IFF(S.STATUS IN ('SUCCEEDED', 'FAILED', 'CANCELLED'), CURRENT_TIMESTAMP(), NULL),
+      CURRENT_TIMESTAMP()
+    )
+    """
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute(sql, (run_id, document_id, stage, normalized, attempt, error_message))
+
+
+def _set_document_ingestion_status(document_id: str, status: str) -> None:
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """UPDATE AI.DOCUMENTS
+               SET INGESTION_STATUS = %s, UPDATED_AT = CURRENT_TIMESTAMP()
+               WHERE DOCUMENT_ID = %s""",
+            (status.upper(), document_id),
+        )
+
+
 def persist_chunks(chunks: list[DocumentChunk]) -> int:
-    """Idempotently merge chunks; apply sql/ddl/ai/001_create_contract_intelligence_tables.sql first."""
+    """Idempotently merge chunks; apply the canonical contract-intelligence DDL first."""
     if not chunks:
         return 0
     values = [
@@ -307,6 +433,7 @@ def ingest_pdf(
     document_version: int = 1,
     contract_version: int = 1,
     document_type: str = "ORIGINAL",
+    parent_document_id: str | None = None,
     effective_date: str | None = None,
     expiry_date: str | None = None,
     chunk_size: int = 450,
@@ -315,51 +442,140 @@ def ingest_pdf(
     persist_to_snowflake: bool = True,
     artifact_bucket: str | None = None,
     artifact_s3_client: Any | None = None,
+    run_id: str | None = None,
+    attempt: int = 1,
 ) -> list[DocumentChunk]:
-    """Ingest a local PDF or s3:// PDF and optionally persist durable artifacts."""
+    """Ingest a PDF and track document registration and every durable processing stage.
+
+    Snowflake lifecycle tracking is enabled with persist_to_snowflake. A caller may
+    supply run_id to correlate retries; otherwise a unique run ID is generated.
+    """
+    if attempt < 1:
+        raise ValueError("attempt must be >= 1")
     source_uri = str(source)
-    name = document_name or Path(urlparse(source_uri).path).name
+    name = document_name or Path(urlparse(source_uri).path).name or Path(source_uri).name
+    execution_id = run_id or str(uuid.uuid4())
+    current_stage = "SOURCE_READ"
+    registered = False
+
     with local_document(source, s3_client=s3_client) as local_path:
         content_hash = sha256_file(local_path)
-        pages = extract_pdf(local_path)
-        chunks = chunk_pages(
-            pages, contract_id, name, partner_id, effective_date, expiry_date,
-            chunk_size, overlap, document_id=document_id,
-            document_version=document_version, contract_version=contract_version,
-            document_type=document_type, source_uri=source_uri, content_hash=content_hash,
-        )
+        resolved_document_id = document_id or hashlib.sha256(
+            f"{contract_id}|{name}|{content_hash}".encode()
+        ).hexdigest()[:32]
 
-    if persist_to_snowflake:
-        persist_chunks(chunks)
+        if persist_to_snowflake:
+            register_document(
+                document_id=resolved_document_id,
+                contract_id=contract_id,
+                document_name=name,
+                source_uri=source_uri,
+                content_hash=content_hash,
+                partner_id=partner_id,
+                document_type=document_type,
+                document_version=document_version,
+                contract_version=contract_version,
+                parent_document_id=parent_document_id,
+                effective_date=effective_date,
+                expiry_date=expiry_date,
+            )
+            registered = True
+            record_ingestion_status(
+                run_id=execution_id, document_id=resolved_document_id,
+                stage="DOCUMENT_REGISTRATION", status="SUCCEEDED", attempt=attempt,
+            )
 
-    if artifact_bucket:
-        if not partner_id:
-            raise ValueError("partner_id is required to persist versioned S3 artifacts")
-        client = artifact_s3_client
-        if client is None:
-            try:
-                import boto3
-            except ImportError as exc:
-                raise RuntimeError("Writing S3 artifacts requires the optional 'aws' extra (boto3).") from exc
-            client = boto3.client("s3")
-        manifest = {
-            "contract_id": contract_id,
-            "partner_id": partner_id,
-            "document_id": chunks[0].document_id if chunks else document_id,
-            "document_version": document_version,
-            "contract_version": contract_version,
-            "document_type": document_type.upper(),
-            "source_uri": source_uri,
-            "content_hash": content_hash,
-            "effective_from": effective_date,
-            "effective_to": expiry_date,
-            "parser_version": "pypdf-v1",
-            "chunking_version": "page-window-v2",
-            "chunk_count": len(chunks),
-        }
-        write_artifacts(
-            s3_client=client, bucket=artifact_bucket, partner_id=partner_id,
-            contract_id=contract_id, document_version=document_version,
-            pages=pages, chunks=chunks, manifest=manifest,
-        )
-    return chunks
+        try:
+            current_stage = "PDF_EXTRACTION"
+            if persist_to_snowflake:
+                record_ingestion_status(
+                    run_id=execution_id, document_id=resolved_document_id,
+                    stage=current_stage, status="RUNNING", attempt=attempt,
+                )
+            pages = extract_pdf(local_path)
+            chunks = chunk_pages(
+                pages, contract_id, name, partner_id, effective_date, expiry_date,
+                chunk_size, overlap, document_id=resolved_document_id,
+                document_version=document_version, contract_version=contract_version,
+                document_type=document_type, source_uri=source_uri, content_hash=content_hash,
+            )
+            if persist_to_snowflake:
+                record_ingestion_status(
+                    run_id=execution_id, document_id=resolved_document_id,
+                    stage=current_stage, status="SUCCEEDED", attempt=attempt,
+                )
+
+            if persist_to_snowflake:
+                current_stage = "CHUNK_PERSISTENCE"
+                record_ingestion_status(
+                    run_id=execution_id, document_id=resolved_document_id,
+                    stage=current_stage, status="RUNNING", attempt=attempt,
+                )
+                persist_chunks(chunks)
+                record_ingestion_status(
+                    run_id=execution_id, document_id=resolved_document_id,
+                    stage=current_stage, status="SUCCEEDED", attempt=attempt,
+                )
+
+            if artifact_bucket:
+                current_stage = "ARTIFACT_PERSISTENCE"
+                if not partner_id:
+                    raise ValueError("partner_id is required to persist versioned S3 artifacts")
+                if persist_to_snowflake:
+                    record_ingestion_status(
+                        run_id=execution_id, document_id=resolved_document_id,
+                        stage=current_stage, status="RUNNING", attempt=attempt,
+                    )
+                client = artifact_s3_client
+                if client is None:
+                    try:
+                        import boto3
+                    except ImportError as exc:
+                        raise RuntimeError(
+                            "Writing S3 artifacts requires the optional 'aws' extra (boto3)."
+                        ) from exc
+                    client = boto3.client("s3")
+                manifest = {
+                    "run_id": execution_id,
+                    "contract_id": contract_id,
+                    "partner_id": partner_id,
+                    "document_id": resolved_document_id,
+                    "document_version": document_version,
+                    "contract_version": contract_version,
+                    "document_type": document_type.upper(),
+                    "source_uri": source_uri,
+                    "content_hash": content_hash,
+                    "effective_from": effective_date,
+                    "effective_to": expiry_date,
+                    "parser_version": "pypdf-v1",
+                    "chunking_version": "page-window-v2",
+                    "chunk_count": len(chunks),
+                }
+                write_artifacts(
+                    s3_client=client, bucket=artifact_bucket, partner_id=partner_id,
+                    contract_id=contract_id, document_version=document_version,
+                    pages=pages, chunks=chunks, manifest=manifest,
+                )
+                if persist_to_snowflake:
+                    record_ingestion_status(
+                        run_id=execution_id, document_id=resolved_document_id,
+                        stage=current_stage, status="SUCCEEDED", attempt=attempt,
+                    )
+
+            if persist_to_snowflake:
+                _set_document_ingestion_status(resolved_document_id, "SUCCEEDED")
+            return chunks
+        except Exception as exc:
+            if persist_to_snowflake and registered:
+                try:
+                    record_ingestion_status(
+                        run_id=execution_id, document_id=resolved_document_id,
+                        stage=current_stage, status="FAILED", attempt=attempt,
+                        error_message=str(exc)[:16000],
+                    )
+                    _set_document_ingestion_status(resolved_document_id, "FAILED")
+                except Exception:
+                    # Preserve the original processing exception; operational logs
+                    # should capture any secondary status-write failure.
+                    pass
+            raise
