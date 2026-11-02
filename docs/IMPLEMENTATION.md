@@ -1,15 +1,21 @@
 # Application Implementation
 
-The Python application layer is under `src/trust_engine`; Snowflake objects are under `snowflake/`.
+The Python application layer is under `src/trust_engine`; Snowflake objects are under `snowflake/`. Business capabilities are separated into Contract Intelligence, Forecasting and Workflows.
 
 ## Modules
 
 - `settings.py` and `db.py`: environment/YAML configuration and Snowflake DB-API access.
-- `documents.py`: page-aware PDF text extraction, overlapping chunking and idempotent chunk merge.
-- `cortex.py`: Cortex Search Python SDK, AI_COMPLETE and grounded evidence assembly.
-- `forecasting.py` and `lstm.py`: daily calendarized revenue features, chronological holdout, XGBoost and optional LSTM inference with forecast persistence.
+### Contract Intelligence — `src/trust_engine/contract_intelligence/`
+- `ingestion.py`: PDF extraction/OCR, normalization, page-aware chunking and Snowflake persistence.
+- `cortex.py`: Cortex Search retrieval, AI_COMPLETE and grounded evidence/citations.
+
+### Forecasting — `src/trust_engine/forecasting/`
+- `xgboost_model.py`: daily revenue features, chronological holdout, XGBoost and forecast persistence.
+- `lstm_model.py`: optional TensorFlow sequence forecasting.
+
+### Workflows — `src/trust_engine/workflows/`
+- `contract_recommendation.py`: LangGraph orchestration across contract evidence and structured transaction/forecast context, human interrupt and reviewer resume.
 - `governance.py`: deterministic approval thresholds, reviewer-role checks and transactional decision/audit writes.
-- `workflows.py`: LangGraph contract workflow: Cortex Search evidence, partner transaction/forecast context, recommendation generation, persisted human interrupt and reviewer resume.
 - `analytics.py`: Cortex SQL generation, read-only validation and semantic object allowlist.
 - `api.py`: REST endpoints for contract questions, analytics and approvals.
 - `streamlit_app.py`: interactive contract, analytics/chart and approval review screens.
@@ -59,7 +65,7 @@ REST endpoints: `GET /health`, `POST /v1/contracts/ask`, `POST /v1/analytics/ask
 ## Workflow boundaries
 
 - Cortex Search manages its retrieval index; no external vector database is introduced.
-- The PDF parser extracts page text and optionally falls back to Tesseract OCR when the `ocr` extra plus system Tesseract/Poppler are installed; otherwise scanned pages remain empty and must be routed for OCR.
+- Contract PDFs are owned by Contract Intelligence. Forecasting consumes structured transaction data, while Workflows orchestrates both domains. The PDF parser extracts page text and optionally falls back to Tesseract OCR when the `ocr` extra plus system Tesseract/Poppler are installed; otherwise scanned pages remain empty and must be routed for OCR.
 - Forecasting currently predicts revenue (demand remains null until a reliable quantity target is configured). XGBoost is the default; LSTM is an optional sequence-model path. Royalty is calculated only when an authoritative decimal rate is supplied; the LLM never invents a rate.
 - Transaction `AMOUNT` must be normalized to a signed financial value upstream. Forecasting does not guess whether returns, credits or adjustments are positive or negative.
 - Forecast evaluation uses a chronological holdout, not random splitting. Add rolling-origin backtests and model registry promotion before claiming production SLAs.
