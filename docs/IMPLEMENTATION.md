@@ -6,7 +6,7 @@ The Python application layer is under `src/trust_engine`; Snowflake objects are 
 
 - `settings.py` and `db.py`: environment/YAML configuration and Snowflake DB-API access.
 - `documents.py`: page-aware PDF text extraction, overlapping chunking and idempotent chunk merge.
-- `cortex.py`: Cortex Search Preview, Cortex Complete and grounded evidence assembly.
+- `cortex.py`: Cortex Search Python SDK, AI_COMPLETE and grounded evidence assembly.
 - `forecasting.py` and `lstm.py`: daily calendarized revenue features, chronological holdout, XGBoost and optional LSTM inference with forecast persistence.
 - `governance.py`: deterministic approval thresholds, reviewer-role checks and transactional decision/audit writes.
 - `workflows.py`: LangGraph contract workflow with persisted interrupt and reviewer resume.
@@ -53,7 +53,7 @@ uvicorn trust_engine.api:app --host 127.0.0.1 --port 8000
 
 REST endpoints: `GET /health`, `POST /v1/contracts/ask`, `POST /v1/analytics/ask`,
 `POST /v1/approvals`, `GET /v1/approvals/{approval_id}`,
-`POST /v1/approvals/{approval_id}/decision`.
+`POST /v1/approvals/{approval_id}/decision`, `POST /v1/workflows/contracts/{thread_id}/start` and `POST /v1/workflows/contracts/{thread_id}/resume`.
 
 ## Workflow boundaries
 
