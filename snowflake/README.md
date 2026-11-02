@@ -82,9 +82,10 @@ Recommendation -> HITL -> Audit
 2. `database/schemas.sql`
 3. `stages/*.sql`
 4. `tables/*.sql`
-5. `procedures/*.sql`
-6. `cortex/*.sql`
-7. `tasks/*.sql`
+5. `migrations/*.sql` (existing deployments only)
+6. `procedures/*.sql`
+7. `cortex/*.sql`
+8. `tasks/*.sql`
 
 Replace environment-specific values such as `TRUST_WH` before deployment. Do not commit credentials or secrets.
 
@@ -99,3 +100,12 @@ The core POC is Snowflake-first: Snowflake tables/stages, SQL/Snowpark processin
 - Tasks are created suspended; resume them only after their dependent procedures/objects are deployed.
 - YAML under `config/` defines configuration; these SQL files create and execute Snowflake-native objects.
 - Use separate controlled configuration/namespaces for DEV, QA, UAT and PROD.
+
+
+## Implemented governance and application objects
+
+The application layer stores contract chunks in `AI.DOCUMENT_CHUNKS`, recommendations in `AI.RECOMMENDATIONS`, and durable approval decisions/audit events in `GOVERNANCE.APPROVAL_REQUESTS` and `GOVERNANCE.APPROVAL_AUDIT_LOG`.
+
+Cortex Search owns the managed retrieval index. The service pins the configured `snowflake-arctic-embed-l-v2.0` model and filters only on columns exposed by its source query. The Python application uses the Cortex Search SDK for serving queries and `AI_COMPLETE` for generation.
+
+See [application setup and run instructions](../docs/IMPLEMENTATION.md).

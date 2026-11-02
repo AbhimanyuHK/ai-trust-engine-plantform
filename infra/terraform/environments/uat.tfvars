@@ -1,0 +1,14 @@
+environment="uat"
+aws_region="ap-south-1"
+container_image="REPLACE_ME_WITH_ECR_IMAGE_URI"
+snowflake_secret_arn="arn:aws:secretsmanager:ap-south-1:333333333333:secret:trust/uat/snowflake"
+contract_bucket_name="REPLACE_WITH_UNIQUE-trust-contracts-uat"
+single_nat_gateway=false
+api_desired_count=2
+worker_desired_count=2
+api_min_capacity=2
+api_max_capacity=10
+worker_min_capacity=2
+worker_max_capacity=10
+enable_waf=true
+log_retention_days=60

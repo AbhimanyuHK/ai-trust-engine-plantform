@@ -1,0 +1,14 @@
+environment="qa"
+aws_region="ap-south-1"
+container_image="REPLACE_ME_WITH_ECR_IMAGE_URI"
+snowflake_secret_arn="arn:aws:secretsmanager:ap-south-1:222222222222:secret:trust/qa/snowflake"
+contract_bucket_name="REPLACE_WITH_UNIQUE-trust-contracts-qa"
+single_nat_gateway=true
+api_desired_count=1
+worker_desired_count=1
+api_min_capacity=1
+api_max_capacity=5
+worker_min_capacity=1
+worker_max_capacity=5
+enable_waf=true
+log_retention_days=30
