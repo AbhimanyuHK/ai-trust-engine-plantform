@@ -31,6 +31,8 @@ def test_contract_intelligence_graph_delegates_processing_to_ingestion():
         "overlap": 60,
         "max_attempts": 3,
         "base_delay_seconds": 1.0,
+        "search_refresh_timeout_seconds": 10,
+        "search_refresh_poll_interval_seconds": 0.1,
     })
 
     assert result["status"] == "COMPLETED"
@@ -59,6 +61,8 @@ def test_contract_intelligence_graph_does_not_complete_empty_pdf():
             "overlap": 60,
             "max_attempts": 1,
             "base_delay_seconds": 0,
+            "search_refresh_timeout_seconds": 10,
+            "search_refresh_poll_interval_seconds": 0.1,
         })
 
 
