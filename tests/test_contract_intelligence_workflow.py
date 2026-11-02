@@ -143,4 +143,7 @@ def test_cortex_search_refresh_uses_configured_service_and_waits_for_success(mon
     )
 
     assert result["STATE"] == "SUCCEEDED"
-    assert "ALTER CORTEX SEARCH SERVICE TRUST_DB.AI.CONTRACT_SEARCH_SERVICE REFRESH" in statements[0]
+    assert (
+        "ALTER CORTEX SEARCH SERVICE TRUST_DB.AI.CONTRACT_SEARCH_SERVICE REFRESH"
+        in statements[0]
+    )
