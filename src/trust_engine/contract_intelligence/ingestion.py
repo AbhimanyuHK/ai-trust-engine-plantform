@@ -10,6 +10,7 @@ import hashlib
 import json
 import re
 import tempfile
+import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
@@ -365,6 +366,62 @@ def record_ingestion_status(
     with connection() as conn, conn.cursor() as cur:
         cur.execute(sql, (run_id, document_id, stage, normalized, attempt, error_message))
 
+
+def retry_ingest_pdf(
+    source: str | Path,
+    *,
+    contract_id: str,
+    document_id: str,
+    run_id: str,
+    max_attempts: int = 3,
+    retryable_exceptions: tuple[type[BaseException], ...] = (TimeoutError, ConnectionError),
+    base_delay_seconds: float = 1.0,
+    **ingest_options: Any,
+) -> list[DocumentChunk]:
+    """Retry an idempotent ingestion using the same document and run identifiers.
+
+    Only explicitly classified transient exceptions are retried. Chunk writes use
+    deterministic IDs and MERGE, so replaying a completed persistence stage is safe.
+    Set max_attempts=1 to disable retries. Callers may include connector-specific
+    transient exception classes in retryable_exceptions.
+    """
+    if not document_id or not run_id:
+        raise ValueError("document_id and run_id are required for retryable ingestion")
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be >= 1")
+    if base_delay_seconds < 0:
+        raise ValueError("base_delay_seconds must be >= 0")
+    if "document_id" in ingest_options or "run_id" in ingest_options or "attempt" in ingest_options:
+        raise ValueError("document_id, run_id and attempt are managed by retry_ingest_pdf")
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return ingest_pdf(
+                source,
+                contract_id=contract_id,
+                document_id=document_id,
+                run_id=run_id,
+                attempt=attempt,
+                **ingest_options,
+            )
+        except retryable_exceptions as exc:
+            if attempt >= max_attempts:
+                raise
+            # This row makes the retry decision visible independently of the
+            # failed processing-stage row. The next attempt updates stage attempts.
+            record_ingestion_status(
+                run_id=run_id,
+                document_id=document_id,
+                stage="INGESTION_RETRY",
+                status="RETRYING",
+                attempt=attempt,
+                error_message=str(exc)[:16000],
+            )
+            delay = base_delay_seconds * (2 ** (attempt - 1))
+            if delay:
+                time.sleep(delay)
+
+    raise RuntimeError("Ingestion retry loop exited unexpectedly")
 
 def _set_document_ingestion_status(document_id: str, status: str) -> None:
     with connection() as conn, conn.cursor() as cur:
