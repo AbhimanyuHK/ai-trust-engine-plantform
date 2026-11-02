@@ -27,13 +27,18 @@ retry_ingest_pdf()
         +--> per-stage status in AI.DOCUMENT_INGESTION_STATUS
         |
         v
-Cortex Search service refreshes asynchronously
+ALTER CORTEX SEARCH SERVICE ... REFRESH
+        |
+        v
+Wait for refresh history = SUCCEEDED
 ```
 
 Contract Intelligence owns the processing. LangGraph invokes it and manages
 workflow-level execution. Snowflake owns current workflow status and event
 history. Cortex Search owns managed embeddings and search indexing; the
-workflow does not generate a duplicate vector column.
+workflow does not generate a duplicate vector column. The workflow requests
+a manual refresh and waits for the matching refresh-history record before it
+marks the run COMPLETED.
 
 ### Snowflake workflow state
 
