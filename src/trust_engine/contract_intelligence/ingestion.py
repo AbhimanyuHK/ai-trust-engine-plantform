@@ -461,7 +461,7 @@ def ingest_pdf(
     with local_document(source, s3_client=s3_client) as local_path:
         content_hash = sha256_file(local_path)
         resolved_document_id = document_id or hashlib.sha256(
-            f"{contract_id}|{name}|{content_hash}".encode()
+            f"{contract_id}|{name}|{document_version}|{contract_version}|{content_hash}".encode()
         ).hexdigest()[:32]
 
         if persist_to_snowflake:
