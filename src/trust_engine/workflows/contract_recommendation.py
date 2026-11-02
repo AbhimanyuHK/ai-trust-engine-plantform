@@ -27,14 +27,17 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _registry_connection(path: str) -> sqlite3.Connection:
+@contextmanager
+def _registry_connection(path: str):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(target), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute(
+    try:
+        conn.execute(
         """CREATE TABLE IF NOT EXISTS workflow_runs (
             thread_id TEXT PRIMARY KEY,
             workflow_type TEXT NOT NULL,
@@ -48,19 +51,21 @@ def _registry_connection(path: str) -> sqlite3.Connection:
             last_error TEXT
         )"""
     )
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS workflow_events (
-            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            thread_id TEXT NOT NULL,
-            event_type TEXT NOT NULL,
-            status TEXT NOT NULL,
-            details_json TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(thread_id) REFERENCES workflow_runs(thread_id)
-        )"""
-    )
-    conn.commit()
-    return conn
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS workflow_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                details_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(thread_id) REFERENCES workflow_runs(thread_id)
+            )"""
+        )
+        conn.commit()
+        yield conn
+    finally:
+        conn.close()
 
 
 def _record_workflow(
@@ -279,9 +284,10 @@ def start_contract_workflow(
         raise ValueError("A persistent checkpointer is required for resumable workflows")
     if not question.strip() or not thread_id.strip():
         raise ValueError("question and thread_id are required")
+    if checkpoint_path is None:
+        from trust_engine.common.config.settings import Settings
+        checkpoint_path = Settings().trust_checkpoint_db
     path = checkpoint_path
-    if path is None:
-        raise ValueError("checkpoint_path is required to persist workflow status")
     existing = get_workflow_status(thread_id, path)
     if existing:
         raise ValueError(
@@ -332,8 +338,9 @@ def resume_contract_workflow(
         raise ValueError("Unsupported approval decision")
     if not reviewer.strip() or not reason.strip():
         raise ValueError("Reviewer identity and reason are required")
-    if not checkpoint_path:
-        raise ValueError("checkpoint_path is required to persist workflow status")
+    if checkpoint_path is None:
+        from trust_engine.common.config.settings import Settings
+        checkpoint_path = Settings().trust_checkpoint_db
     current = get_workflow_status(thread_id, checkpoint_path)
     if not current:
         raise ValueError(f"Unknown workflow thread: {thread_id}")
