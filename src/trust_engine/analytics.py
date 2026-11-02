@@ -23,6 +23,8 @@ def validate_read_only_sql(sql: str, allowed_objects: set[str] | None = None) ->
         permitted = {x.upper() for x in allowed_objects}
         if not refs or not refs.issubset(permitted):
             raise ValueError(f"Query references objects outside allowlist: {refs-permitted}")
+    if not re.search(r"\\bLIMIT\\s+\\d+\\b",candidate,re.I):
+        candidate += " LIMIT 1000"
     return candidate
 
 def generate_sql(question: str, semantic_context: str) -> str:
