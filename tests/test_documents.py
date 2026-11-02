@@ -124,3 +124,80 @@ def test_ingestion_marks_failed_stage_and_document(monkeypatch, tmp_path):
     assert any(stage == "PDF_EXTRACTION" and status == "FAILED" and error == "bad PDF"
                for stage, status, error in events)
     assert ("DOCUMENT", "FAILED", None) in events
+
+
+
+def test_retry_ingest_pdf_retries_transient_failure_with_same_ids(monkeypatch):
+    import trust_engine.contract_intelligence.ingestion as ingestion
+
+    calls = []
+    statuses = []
+    sleeps = []
+
+    def flaky_ingest(source, **kwargs):
+        calls.append(kwargs.copy())
+        if len(calls) == 1:
+            raise TimeoutError("temporary Snowflake/network timeout")
+        return ["chunk"]
+
+    monkeypatch.setattr(ingestion, "ingest_pdf", flaky_ingest)
+    monkeypatch.setattr(ingestion, "record_ingestion_status",
+                        lambda **kwargs: statuses.append(kwargs))
+    monkeypatch.setattr(ingestion.time, "sleep", sleeps.append)
+
+    result = ingestion.retry_ingest_pdf(
+        "contract.pdf",
+        contract_id="C-10",
+        document_id="DOC-10",
+        run_id="RUN-10",
+        max_attempts=3,
+        base_delay_seconds=0.25,
+    )
+
+    assert result == ["chunk"]
+    assert [call["attempt"] for call in calls] == [1, 2]
+    assert all(call["document_id"] == "DOC-10" for call in calls)
+    assert all(call["run_id"] == "RUN-10" for call in calls)
+    assert statuses[0]["stage"] == "INGESTION_RETRY"
+    assert statuses[0]["status"] == "RETRYING"
+    assert statuses[0]["attempt"] == 1
+    assert sleeps == [0.25]
+
+
+def test_retry_ingest_pdf_does_not_retry_non_transient_failure(monkeypatch):
+    import trust_engine.contract_intelligence.ingestion as ingestion
+
+    calls = []
+    monkeypatch.setattr(
+        ingestion, "ingest_pdf",
+        lambda *_args, **_kwargs: (calls.append(1), (_ for _ in ()).throw(ValueError("bad input")))[1],
+    )
+
+    try:
+        ingestion.retry_ingest_pdf(
+            "contract.pdf", contract_id="C-11", document_id="DOC-11",
+            run_id="RUN-11", max_attempts=4,
+        )
+    except ValueError as exc:
+        assert str(exc) == "bad input"
+    else:
+        raise AssertionError("expected non-transient failure")
+
+    assert len(calls) == 1
+
+
+def test_retry_ingest_pdf_validates_retry_configuration():
+    import trust_engine.contract_intelligence.ingestion as ingestion
+
+    for kwargs in (
+        {"document_id": "", "run_id": "RUN"},
+        {"document_id": "DOC", "run_id": ""},
+        {"document_id": "DOC", "run_id": "RUN", "max_attempts": 0},
+        {"document_id": "DOC", "run_id": "RUN", "base_delay_seconds": -1},
+    ):
+        options = {"contract_id": "C-12", **kwargs}
+        try:
+            ingestion.retry_ingest_pdf("contract.pdf", **options)
+        except ValueError:
+            continue
+        raise AssertionError(f"Expected invalid retry configuration to fail: {kwargs}")
