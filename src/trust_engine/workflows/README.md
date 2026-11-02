@@ -95,10 +95,14 @@ idempotent. This is replay from the durable request, not restoration of an
 in-memory LangGraph node checkpoint. S3 source URIs are preferred for recovery;
 a local path can only be resumed where the same file remains accessible.
 
-The workflow completes when PDF extraction and chunk persistence succeed.
-Cortex Search indexing is asynchronous and follows the service's configured
-`TARGET_LAG`; a completed ingestion run does not claim the new chunks are
-already searchable. The configured service name defaults to
+After PDF extraction and chunk persistence, the workflow issues
+`ALTER CORTEX SEARCH SERVICE ... REFRESH` and waits for the corresponding
+`CORTEX_SEARCH_REFRESH_HISTORY` record to reach `SUCCEEDED`. The workflow
+is marked `COMPLETED` only after that refresh succeeds. The wait is bounded
+(default 600 seconds); a refresh failure or timeout marks the run `FAILED`
+at `CORTEX_SEARCH_INDEXING`. The manual refresh is in addition to the
+service's normal `TARGET_LAG` schedule. The execution role needs the
+`OPERATE` privilege on the Cortex Search service. The configured service name defaults to
 `TRUST_DB.AI.CONTRACT_SEARCH_SERVICE` and uses
 `snowflake-arctic-embed-l-v2.0` for managed embeddings. Snowflake documents
 the service's managed embedding and refresh behavior in its
