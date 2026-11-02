@@ -1,0 +1,63 @@
+# Application Implementation
+
+The Python application layer is under `src/trust_engine`; Snowflake objects are under `snowflake/`.
+
+## Modules
+
+- `settings.py` and `db.py`: environment/YAML configuration and Snowflake DB-API access.
+- `documents.py`: page-aware PDF text extraction, overlapping chunking and idempotent chunk merge.
+- `cortex.py`: Cortex Search Preview, Cortex Complete and grounded evidence assembly.
+- `forecasting.py`: daily calendarized revenue features, chronological holdout, XGBoost inference and forecast persistence.
+- `governance.py`: deterministic approval thresholds, reviewer-role checks and transactional decision/audit writes.
+- `workflows.py`: LangGraph contract workflow with persisted interrupt and reviewer resume.
+- `analytics.py`: Cortex SQL generation, read-only validation and semantic object allowlist.
+- `api.py`: REST endpoints for contract questions, analytics and approvals.
+- `cli.py`: configuration validation, PDF ingestion, forecasting and approval operations.
+
+## Setup
+
+```bash
+python -m venv .venv
+# Windows: .venv\\Scripts\\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -e ".[dev,agent]"
+copy .env.example .env
+```
+
+Set Snowflake account, user, authentication and role values in `.env`. Never commit credentials.
+
+## Snowflake deployment order
+
+1. `snowflake/database/databases.sql`
+2. `snowflake/database/schemas.sql`
+3. `snowflake/stages/*.sql`
+4. `snowflake/tables/*.sql`
+5. `snowflake/procedures/*.sql`
+6. `snowflake/cortex/*.sql`
+7. `snowflake/tasks/*.sql`
+
+Deploy all table DDL before running the API or CLI against Snowflake.
+
+## CLI and API
+
+```bash
+trust-engine validate-config
+trust-engine ingest-contract ./contract.pdf --contract-id CONTRACT_101 --partner-id CONTRACTOR_101
+trust-engine forecast --horizon-days 60
+uvicorn trust_engine.api:app --host 127.0.0.1 --port 8000
+```
+
+REST endpoints: `GET /health`, `POST /v1/contracts/ask`, `POST /v1/analytics/ask`,
+`POST /v1/approvals`, `GET /v1/approvals/{approval_id}`,
+`POST /v1/approvals/{approval_id}/decision`.
+
+## Workflow boundaries
+
+- Cortex Search manages its retrieval index; no external vector database is introduced.
+- The base PDF parser extracts text and page references. Scanned PDFs need a configured OCR worker; empty text is not treated as successful extraction.
+- Forecasting currently predicts revenue. Royalty is calculated only when an authoritative decimal rate is supplied; the LLM never invents a rate.
+- Transaction `AMOUNT` must be normalized to a signed financial value upstream. Forecasting does not guess whether returns, credits or adjustments are positive or negative.
+- Forecast evaluation uses a chronological holdout, not random splitting. Add rolling-origin backtests and model registry promotion before claiming production SLAs.
+- LangGraph checkpoints represent execution state; Snowflake approval and audit tables represent business decisions. They are separate records.
+- SQLite checkpoints are for local development. Multi-instance production requires a shared durable checkpointer, authenticated reviewer identity, SSO/RBAC, API authentication, rate limits and network controls.
+- Verify Cortex model availability, search service syntax, warehouse sizing and grants in the target Snowflake account before deployment.
