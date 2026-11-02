@@ -29,10 +29,18 @@ def ingest_contract(pdf: Path,contract_id: str,partner_id: str="",effective_date
     print({"contract_id":contract_id,"pages":len(pages),"chunks":len(chunks),"merged":persist_chunks(chunks)})
 
 @app.command()
-def forecast(horizon_days: int=60,partner_id: str="") -> None:
-    result=train_and_forecast(load_daily_revenue(partner_id or None),horizon_days,partner_id or None)
+def forecast(horizon_days: int=60,partner_id: str="",model: str="xgboost") -> None:
+    history=load_daily_revenue(partner_id or None)
+    if model.lower()=="xgboost":
+        result=train_and_forecast(history,horizon_days,partner_id or None)
+    elif model.lower()=="lstm":
+        from trust_engine.lstm import train_lstm
+        result=train_lstm(history,horizon_days)
+    else:
+        raise typer.BadParameter("model must be xgboost or lstm")
     run_id=str(uuid.uuid4())
-    print({"run_id":run_id,"rows":persist_forecast(result,run_id),"mae":result.mae,"rmse":result.rmse})
+    print({"run_id":run_id,"model":result.model_name,"rows":persist_forecast(result,run_id),
+           "mae":result.mae,"rmse":result.rmse})
 
 @app.command()
 def approval_status(approval_id: str) -> None:
