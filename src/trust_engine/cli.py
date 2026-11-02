@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 import typer
 from rich import print
-from trust_engine.documents import chunk_pages,extract_pdf,persist_chunks
+from trust_engine.contract_intelligence.ingestion import chunk_pages,extract_pdf,persist_chunks
 from trust_engine.forecasting import load_daily_revenue,persist_forecast,train_and_forecast
 from trust_engine.governance import decide_approval,get_approval
 from trust_engine.settings import load_pipeline_config
@@ -34,7 +34,7 @@ def forecast(horizon_days: int=60,partner_id: str="",model: str="xgboost") -> No
     if model.lower()=="xgboost":
         result=train_and_forecast(history,horizon_days,partner_id or None)
     elif model.lower()=="lstm":
-        from trust_engine.lstm import train_lstm
+        from trust_engine.forecasting.lstm_model import train_lstm
         result=train_lstm(history,horizon_days)
     else:
         raise typer.BadParameter("model must be xgboost or lstm")
